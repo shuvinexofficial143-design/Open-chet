@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {catalogueDemoProducts,catalogueGroups,productSnapshot,type Filters} from '../lib/catalogue';
+import {catalogueDemoProducts,catalogueGroups,formatPrice,meaningfulPrice,productSnapshot,type Filters} from '../lib/catalogue';
 import {demoData,demoAction} from '../lib/demo';
 const all:Filters={query:'',category:'',brand:'',form:'',stock:'',sort:'name',featured:false};
 describe('Catalogue browsing and chat sharing',()=>{
@@ -10,4 +10,5 @@ it('keeps on-request availability distinct from zero stock',()=>expect(productSn
 it('shares multiple product cards and preserves immutable snapshots',()=>{let d=demoData();const ids=d.products.slice(0,3).map(p=>p.id);for(const id of ids)d=demoAction(d,{type:'send',id:'v0',values:{kind:'product',product_id:id}});const sent=d.messages.filter(m=>m.kind==='product');expect(sent).toHaveLength(3);expect(sent.every(m=>m.status==='demo'&&m.product_snapshot.name)).toBe(true);const old=sent[0].product_snapshot.name;d.products[0].name='Renamed';expect(sent[0].product_snapshot.name).toBe(old);expect(d.conversations[0].mode).toBe('human')});
 it('prevents sharing nonexistent products and closed-window sends',()=>{expect(()=>demoAction(demoData(),{type:'send',id:'v0',values:{kind:'product',product_id:'missing'}})).toThrow('Product not found');expect(()=>demoAction(demoData(),{type:'send',id:'v4',values:{kind:'product',product_id:'catalogue-demo-0'}})).toThrow('window')});
 it('supports featured filtering',()=>expect(catalogueGroups(catalogueDemoProducts(),{...all,featured:true}).flatMap(x=>x.products).every(p=>p.featured)).toBe(true));
+it('omits empty and zero prices instead of rendering a fake amount',()=>{expect(meaningfulPrice(null)).toBeNull();expect(meaningfulPrice('')).toBeNull();expect(meaningfulPrice(0)).toBeNull();expect(formatPrice({...productSnapshot({id:'p',name:'Item'}),price:null})).toBe('');expect(formatPrice({...productSnapshot({id:'p',name:'Item'}),price:120})).toContain('120')});
 });
