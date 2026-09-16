@@ -1,83 +1,400 @@
 'use client';
-import CataloguePanel,{ProductMessage} from './catalogue-panel';
-import {catalogueDemoProducts} from '@/lib/catalogue';
-import {useEffect,useRef,useState} from 'react';
+
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
-import {MessageSquare,Users,Megaphone,FileText,Package,Workflow,ChartNoAxesCombined,Settings,Search,Plus,Bot,UserRound,ArrowLeft,Send,Paperclip,Smile,CheckCheck,Clock,ShieldCheck,Bell,LogOut,PanelRightClose,Play,Download,ChevronRight,NotebookPen,X,RefreshCw,ArrowUpRight,Check,Command} from 'lucide-react';
-import type {Action,Contact,Data,Row,Message} from '@/lib/types';
-import {api,browserDB,configured} from '@/lib/supabase';
-import {demoAction,demoData} from '@/lib/demo';
-import {canAdmin,canManage,messagingOpen,normalizePhone,templateVariables} from '@/lib/domain';
+import {useEffect, useRef, useState} from 'react';
 import Papa from 'papaparse';
+import {
+  ArrowLeft, ArrowRight, Bell, Bot, BriefcaseBusiness, Check, CheckCheck, ChevronLeft,
+  ChevronRight, Clock, Download, FileText, Image as ImageIcon, Info,
+  LogOut, Menu, MessageCircle, MessageSquare, MoreVertical, Package,
+  Paperclip, Pencil, Plus, Search, Send, Settings, ShieldCheck, Smile, Sparkles, Upload,
+  UserRound, Users, X, Zap,
+} from 'lucide-react';
+import CataloguePanel, {ProductMessage} from './catalogue-panel';
 import Dialog from './dialog';
-const nav=[['Inbox',MessageSquare],['Contacts',Users],['Campaigns',Megaphone],['Templates',FileText],['Catalogue',Package],['Automation',Workflow],['Analytics',ChartNoAxesCombined],['Team',Users],['Settings',Settings]] as const;
-const time=(s:string)=>new Date(s).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-const initials=(s:string)=>s.replace(/^Dr\. /,'').split(' ').slice(0,2).map(x=>x[0]).join('');
-const badge=(mode:string)=>mode==='ai'?'AI handling':mode==='human'?'Human handling':'AI paused';
-const inputValues=(form:HTMLFormElement)=>Object.fromEntries(new FormData(form));
-export default function Workspace(){
-const router=useRouter();
-const [data,setData]=useState<Data|null>(null),[demo,setDemo]=useState(!configured),[page,setPage]=useState('Inbox'),[selected,setSelected]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('All'),[draft,setDraft]=useState(''),[chatSearch,setChatSearch]=useState(''),[showSearch,setShowSearch]=useState(false),[details,setDetails]=useState(true),[mobileChat,setMobileChat]=useState(false),[dialog,setDialog]=useState<{type:string;row?:Row}|null>(null),[toast,setToast]=useState(''),[busy,setBusy]=useState(false),[noteMode,setNoteMode]=useState(false),[attachment,setAttachment]=useState<Row|null>(null),[limit,setLimit]=useState(100),[importRows,setImportRows]=useState<Row[]>([]),[showNotifications,setShowNotifications]=useState(false),[settingsTab,setSettingsTab]=useState('General'),[catalogueOpen,setCatalogueOpen]=useState(false);
-const state=useRef<Data|null>(null),messageEnd=useRef<HTMLDivElement>(null),fileInput=useRef<HTMLInputElement>(null);useEffect(()=>{state.current=data},[data]);
-const notify=(s:string)=>{setToast(s);setTimeout(()=>setToast(''),5000)};
-async function reload(){const next=await api(`/api/bootstrap?limit=${limit}`);setData(next);return next as Data}
-useEffect(()=>{let active=true;const local=!configured||new URLSearchParams(location.search).get('demo')==='1';setDemo(local);if(local){try{const saved=localStorage.getItem('open-chet-demo-v1');const d=saved?JSON.parse(saved):demoData();if(!d.catalogue_demo_version){const ids=new Set(d.products.map((p:Row)=>p.id));d.products.push(...catalogueDemoProducts().filter(p=>!ids.has(p.id)));d.catalogue_demo_version=1;}if(active){setData(d);setSelected(d.conversations[0]?.id||'')}}catch{setData(demoData())}}else reload().then(d=>setSelected(d.conversations[0]?.id||'')).catch(()=>{router.push('/login')});if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});return()=>{active=false}},[]);
-useEffect(()=>{if(demo&&data)localStorage.setItem('open-chet-demo-v1',JSON.stringify(data))},[data,demo]);
-useEffect(()=>{if(!data||demo)return;const org=data.organization_id;const channel=browserDB().channel(`inbox:${org}`).on('postgres_changes',{event:'*',schema:'public',table:'messages',filter:`organization_id=eq.${org}`},()=>reload()).on('postgres_changes',{event:'*',schema:'public',table:'conversations',filter:`organization_id=eq.${org}`},()=>reload()).on('postgres_changes',{event:'*',schema:'public',table:'notes',filter:`organization_id=eq.${org}`},()=>reload()).on('postgres_changes',{event:'*',schema:'public',table:'notifications',filter:`organization_id=eq.${org}`},()=>reload()).subscribe();const timer=setInterval(()=>reload().catch(()=>{}),30000);return()=>{browserDB().removeChannel(channel);clearInterval(timer)}},[data?.organization_id,demo,limit]);
-useEffect(()=>{messageEnd.current?.scrollIntoView({behavior:'smooth'})},[selected,data?.messages.length]);
-async function act(action:Action,success?:string){setBusy(true);try{let next:Data;if(demo){next=demoAction(state.current!,action);state.current=next;setData(next)}else{await api('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(action)});next=await reload()}if(success)notify(success);return next}catch(e){notify((e as Error).message);return null}finally{setBusy(false)}}
-async function openConversation(id:string){setSelected(id);setMobileChat(true);setDraft('');setAttachment(null);setNoteMode(false);await act({type:'read',id});if(!demo){try{const result=await api(`/api/bootstrap?conversation=${id}`);setData(d=>d?{...d,messages:[...d.messages.filter(m=>m.conversation_id!==id),...result.messages]}:d)}catch(e){notify((e as Error).message)}}}
-async function openContact(contact:Contact){const next=await act({type:'open',id:contact.id});if(next){setPage('Inbox');const c=next.conversations.find(x=>x.contact_id===contact.id);if(c)openConversation(c.id)}}
-async function send(e:React.FormEvent){e.preventDefault();if((!draft.trim()&&!attachment)||!selected)return;const next=await act({type:noteMode?'note':'send',id:selected,values:{body:draft.trim()||attachment?.name,kind:attachment?.kind||'text',media_id:attachment?.media_id,media_url:attachment?.media_url,idempotency_key:crypto.randomUUID()}});if(next){setDraft('');setAttachment(null)}}
-async function upload(file:File){if(file.size>16*1024*1024){notify('Maximum attachment size is 16 MB');return;}setBusy(true);try{if(demo){const kind=file.type.startsWith('image')?'image':file.type.startsWith('video')?'video':file.type.startsWith('audio')?'audio':'document';setAttachment({id:crypto.randomUUID(),name:file.name,kind,media_url:URL.createObjectURL(file)});notify('Demo attachment preview is available for this session.')}else{const form=new FormData();form.set('file',file);setAttachment({id:crypto.randomUUID(),...await api('/api/media',{method:'POST',body:form})})}}catch(e){notify((e as Error).message)}finally{setBusy(false)}}
-async function downloadMedia(m:Message){if(demo){notify('Demo media is only available in the session where it was attached');return;}try{const {data:{session}}=await browserDB().auth.getSession();const r=await fetch(`/api/media?message=${m.id}`,{headers:{Authorization:`Bearer ${session?.access_token}`}});if(!r.ok)throw Error('Media could not be downloaded');const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download=m.body||'attachment';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){notify((e as Error).message)}}
-function navigate(name:string){setPage(name);setQuery('');setMobileChat(false)}
-if(!data)return <div className="loading"><span className="brand-icon"><MessageSquare/></span><h2>Opening Open Chet…</h2><a href="/login">Sign in</a></div>;
-const conv=data.conversations.find(x=>x.id===selected),contact=data.contacts.find(x=>x.id===conv?.contact_id),open=messagingOpen(conv?.last_inbound_at||null),manager=canManage(data.role),admin=canAdmin(data.role),tags=[...new Set(data.contacts.flatMap(x=>x.tags))];
-const visible=data.conversations.filter(c=>{const p=data.contacts.find(x=>x.id===c.contact_id);const hay=[p?.name,p?.phone,p?.company,p?.tags.join(' '),c.preview,...data.messages.filter(m=>m.conversation_id===c.id).map(m=>m.body),...data.notes.filter(n=>n.conversation_id===c.id).map(n=>n.body)].join(' ').toLowerCase();return hay.includes(query.toLowerCase())&&(filter==='All'||filter==='Unread'&&c.unread>0||filter==='Mine'&&c.assigned_to===data.user_id||filter==='AI'&&c.mode==='ai'||filter==='Human'&&c.mode==='human'||p?.tags.includes(filter))}).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
-const messages=data.messages.filter(m=>m.conversation_id===selected&&m.body.toLowerCase().includes(chatSearch.toLowerCase())),notes=data.notes.filter(n=>n.conversation_id===selected);
-const match=(r:Row)=>JSON.stringify(r).toLowerCase().includes(query.toLowerCase());
-function createButton(label:string,type:string){return <button className="primary" onClick={()=>setDialog({type})}><Plus size={18}/>{label}</button>}
-function stats(items:[string,number|string][]) {return <div className="stats">{items.map(([label,value])=><div className="stat" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>}
-async function saveForm(e:React.FormEvent<HTMLFormElement>,type:string,id?:string){e.preventDefault();const form=e.currentTarget;const v:any=inputValues(form);if(type==='contact'){v.tags=String(v.tags||'').split(',').map(s=>s.trim()).filter(Boolean);v.opted_in=v.opted_in==='on';try{v.custom_fields=JSON.parse(String(v.custom_fields||'{}'))}catch{notify('Custom fields must be a JSON object');return;}}if(type==='settings'){v.ai_enabled=v.ai_enabled==='on';v.auto_pause=v.auto_pause==='on';}if(type==='automation')v.enabled=v.enabled==='on';if(type==='product')v.featured=v.featured==='on';if(type==='campaign'){v.scheduled_at=v.scheduled_at?new Date(v.scheduled_at).toISOString():null;v.variables=String(v.variables||'').split('|').filter(Boolean);v.contact_ids=new FormData(form).getAll('contact_ids');}const next=await act({type,id,values:v},'Saved');if(next)setDialog(null)}
-function field(label:string,name:string,value:unknown='',type='text',required=false){return <label key={name}>{label}<input name={name} defaultValue={String(value??'')} type={type} step={type==='number'?'any':undefined} required={required}/></label>}
-function area(label:string,name:string,value:unknown=''){return <label>{label}<textarea name={name} defaultValue={String(value??'')} rows={3}/></label>}
-function selectField(label:string,name:string,options:string[],value:unknown){return <label>{label}<select name={name} defaultValue={String(value??options[0])}>{options.map(x=><option key={x}>{x}</option>)}</select></label>}
-const toolbar=<div className="page-top"><div><div className="eyebrow">WORKSPACE</div><h1>{page}</h1></div><div className="page-actions"><div className="search compact"><Search size={17}/><input aria-label={`Search ${page.toLowerCase()}`} placeholder={`Search ${page.toLowerCase()}…`} value={query} onChange={e=>setQuery(e.target.value)}/></div>{page==='Contacts'?createButton('Add contact','contact'):page==='Campaigns'&&manager?createButton('Create campaign','campaign'):page==='Catalogue'&&manager?createButton('Add product','product'):page==='Automation'&&manager?createButton('Create rule','automation'):page==='Templates'?createButton('Quick reply','quick_reply'):page==='Team'&&admin?createButton('Add teammate','member'):null}</div></div>;
-return <div className={`app ${mobileChat?'mobile-chat':''}`}><aside className="sidebar"><Link href="/" className="brand"><span className="brand-icon"><MessageSquare size={23}/></span><span>Open <b>Chet</b></span></Link><button className="workspace-picker" onClick={()=>navigate('Settings')}><span className="workspace-avatar">OC</span><span><strong>{data.settings.name}</strong><small>Business workspace</small></span><ChevronRight size={15}/></button><div className="nav-caption">WORKSPACE</div><nav>{nav.map(([name,Icon])=><button key={name} className={page===name?'nav-item active':'nav-item'} onClick={()=>navigate(name)}><Icon size={20}/><span>{name}</span>{name==='Inbox'&&<b>{data.conversations.filter(c=>c.unread>0).length}</b>}</button>)}</nav><div className="sidebar-bottom"><div className="assistant-card"><Bot size={21}/><strong>Your AI, your control.</strong><p>Step in whenever a conversation needs you.</p><button onClick={()=>{navigate('Settings');setSettingsTab('AI assistant')}}>Manage assistant <ArrowUpRight size={15}/></button></div><button className="profile" onClick={()=>navigate('Team')}><span className="avatar small">{initials(data.members.find(x=>x.id===data.user_id)?.name||'You')}</span><span><strong>{data.members.find(x=>x.id===data.user_id)?.name||'You'}</strong><small>{data.role} · Available</small></span><Settings size={17}/></button></div></aside>
-<div className="main-shell"><header className="topbar"><div className="breadcrumb">Workspace <ChevronRight size={14}/> <strong>{page}</strong></div><div className="topbar-right"><span className={`connection ${demo?'demo':''}`}><span/>{demo?'Demo workspace':data.connection?.whatsapp?'WhatsApp configured':'Setup needed'}</span><button className="icon-button" aria-label="Notifications" onClick={()=>setShowNotifications(!showNotifications)}><Bell size={20}/>{data.notifications.length>0&&<i/>}</button><button className="icon-button" aria-label="Account" onClick={()=>navigate('Settings')}><span className="avatar tiny">VP</span></button></div></header>{demo&&<div className="demo-banner"><span><ShieldCheck size={14}/> Demo data · Messages stay on this device and are never sent to WhatsApp.</span><a href="/login">Connect your business <ArrowUpRight size={13}/></a></div>}
-{showNotifications&&<div className="notifications"><h3>Notifications</h3>{data.notifications.length?data.notifications.slice(0,10).map(n=><p key={n.id}>{n.body}</p>):<p>You’re all caught up.</p>}<button className="link" onClick={()=>act({type:'notify_read'})}>Mark all as read</button></div>}
-{page==='Inbox'?<main className="inbox"><section className="chat-list"><div className="list-heading"><h1>Inbox <span>{data.conversations.length}</span></h1><button className="icon-button" aria-label="New conversation" onClick={()=>setDialog({type:'new-chat'})}><Plus/></button></div><div className="search"><Search size={18}/><input placeholder="Search conversations…" aria-label="Search conversations" value={query} onChange={e=>setQuery(e.target.value)}/><span className="key-hint"><Command size={11}/> K</span></div><div className="filters">{['All','Unread','Mine','AI','Human'].map(x=><button key={x} className={filter===x?'active':''} onClick={()=>setFilter(x)}>{x}</button>)}<select aria-label="Filter by tag" value={tags.includes(filter)?filter:''} onChange={e=>setFilter(e.target.value||'All')}><option value="">Tags</option>{tags.map(x=><option key={x}>{x}</option>)}</select></div><div className="conversation-scroll">{visible.map(c=>{const p=data.contacts.find(x=>x.id===c.contact_id);return <button key={c.id} className={`conversation ${selected===c.id?'selected':''}`} onClick={()=>openConversation(c.id)}><span className={`avatar color-${data.contacts.findIndex(x=>x.id===c.contact_id)%4}`}>{initials(p?.name||'Contact')}</span><div className="conversation-copy"><div className="conversation-title"><strong>{p?.name||'Contact'}</strong><time>{time(c.updated_at)}</time></div><div className="conversation-preview"><p>{c.preview||'Start a conversation'}</p>{c.unread>0&&<b className="unread">{c.unread}</b>}</div><div className="conversation-labels"><span className={`mode-label ${c.mode}`}>{c.mode==='ai'?<Bot size={12}/>:<UserRound size={12}/>} {badge(c.mode)}</span>{p?.priority==='high'&&<span className="priority">High priority</span>}</div></div></button>})}{!visible.length&&<div className="empty"><Search/><h3>No conversations found</h3><p>Try a different search or start a new chat.</p></div>}</div><div className="list-footer"><ShieldCheck size={14}/> Your team’s shared inbox</div></section>
-{conv&&contact?<><section className="chat-panel"><header className="chat-header"><button className="icon-button mobile-back" aria-label="Back to chats" onClick={()=>setMobileChat(false)}><ArrowLeft/></button><span className="avatar">{initials(contact.name)}</span><button className="contact-heading" onClick={()=>setDetails(!details)}><strong>{contact.name}</strong><small>{contact.company||contact.phone}</small></button><button className="icon-button" aria-label="Search in conversation" onClick={()=>setShowSearch(!showSearch)}><Search size={19}/></button><button className="icon-button" aria-label="Contact details" onClick={()=>setDetails(!details)}><PanelRightClose size={19}/></button></header><div className={`ai-bar ${conv.mode}`}><div className="ai-description"><span className="ai-orb">{conv.mode==='human'?<UserRound size={20}/>:<Bot size={22}/>}</span><span><strong>{conv.mode==='ai'?'AI Reply ON':conv.mode==='human'?'You’re in control':'AI replies paused'}</strong><small>{conv.mode==='ai'?'Your assistant handles routine enquiries':'Your team can reply to this conversation'}</small></span><button role="switch" aria-checked={conv.mode==='ai'} aria-label="AI Reply" className={`switch ${conv.mode==='ai'?'on':''}`} disabled={busy} onClick={()=>act({type:'mode',id:selected,values:{mode:conv.mode==='ai'?'paused':'ai'}})}><span/></button></div><button className="takeover" disabled={busy} onClick={()=>act({type:'mode',id:selected,values:{mode:conv.mode==='human'?'ai':'human'}},conv.mode==='human'?'AI resumed':'You are handling this conversation')}>{conv.mode==='human'?<Play size={16}/>:<UserRound size={16}/>} {conv.mode==='human'?'Resume AI':'Take over'}</button></div>
-{showSearch&&<div className="search chat-search"><Search size={16}/><input aria-label="Find in chat" placeholder="Find a message in this chat" value={chatSearch} onChange={e=>setChatSearch(e.target.value)}/></div>}
-<div className="messages">{!demo&&messages.length>=50&&<button className="secondary load-more" onClick={async()=>{const result=await api(`/api/bootstrap?conversation=${selected}&before=${encodeURIComponent(messages[0].created_at)}`);setData(d=>d?{...d,messages:[...result.messages,...d.messages]}:d)}}>Load older messages</button>}<div className="chat-security"><ShieldCheck size={13}/> {demo?'Demo conversation':'Messages are saved to your business workspace'}</div>{messages.map((m,i)=><div key={m.id}>{(i===0||new Date(messages[i-1].created_at).toDateString()!==new Date(m.created_at).toDateString())&&<div className="date-divider">{new Date(m.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'long'})}</div>}<div className={`message-row ${m.direction}`}><div className={`message-bubble ${m.direction}`}><div className="message-author">{m.sender_name}{m.sender_name==='Open Chet AI'&&<span>AI</span>}</div>{m.kind==='image'&&m.media_url?.startsWith('blob:')&&<img className="message-image" src={m.media_url} alt={m.body||'Attachment'}/>} {m.kind==='video'&&m.media_url?.startsWith('blob:')&&<video controls src={m.media_url}/>} {m.kind==='audio'&&m.media_url?.startsWith('blob:')&&<audio controls src={m.media_url}/>} {['image','document','video','audio'].includes(m.kind)&&!m.media_url&&<button className="attachment-link" onClick={()=>downloadMedia(m)}><Download size={18}/>Open {m.kind}</button>}{m.kind==='template'&&<span className="template-label"><FileText size={12}/> Template</span>}<>{m.kind==='product'&&m.product_snapshot?<ProductMessage product={m.product_snapshot}/>:<p>{m.body}</p>}</><div className="message-meta"><time>{time(m.created_at)}</time>{m.direction==='out'&&(m.status==='demo'?<span>Demo</span>:m.status==='read'?<CheckCheck size={15} className="read"/>:m.status==='delivered'?<CheckCheck size={15}/>:m.status==='sent'?<Check size={15}/>:<span>{m.status}</span>)}</div></div></div></div>)}{noteMode&&notes.map(n=><div className="internal-note" key={n.id}><NotebookPen size={15}/><span><b>Internal note · {n.author_name}</b><p>{n.body}</p></span></div>)}<div ref={messageEnd}/></div>
-<div className="composer-wrap"><div className="window-state"><span className={open?'':'warning'}><Clock size={12}/>{open?'Normal message available':'Template required · 24-hour window closed'}</span><button className={noteMode?'link warning':'link'} onClick={()=>setNoteMode(!noteMode)}><NotebookPen size={13}/>{noteMode?'Switch to message':'Internal note'}</button></div>{attachment&&<div className="attachment-preview"><Paperclip size={15}/>{attachment.name}<button className="icon-button" aria-label="Remove attachment" onClick={()=>setAttachment(null)}><X size={15}/></button></div>}{draft.startsWith('/')&&<div className="quick-suggestions">{data.quick_replies.filter(q=>q.shortcut.startsWith(draft)).map(q=><button key={q.id} onClick={()=>setDraft(q.body)}><b>{q.shortcut}</b>{q.body}</button>)}</div>}<form className={`composer ${noteMode?'note-composer':''}`} onSubmit={send}><button type="button" className="icon-button" aria-label="Add emoji" onClick={()=>setDraft(d=>d+' 😊')}><Smile size={21}/></button><button type="button" className="icon-button" aria-label="Attach file" disabled={noteMode||!open} onClick={()=>fileInput.current?.click()}><Paperclip size={21}/></button><input type="file" hidden ref={fileInput} accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,audio/mpeg,audio/ogg,audio/mp4" onChange={e=>{if(e.target.files?.[0])upload(e.target.files[0]);e.target.value=''}}/><input aria-label="Message" placeholder={noteMode?'Write an internal note…':open?'Type a message, or / for quick replies…':'Choose an approved template to continue'} value={draft} onChange={e=>setDraft(e.target.value)} disabled={!noteMode&&!open}/><button type="button" className="icon-button" aria-label="Choose template" onClick={()=>setDialog({type:'send-template'})}><FileText size={20}/></button><button type="button" className="catalogue-entry" aria-label="Open catalogue" onClick={()=>setCatalogueOpen(true)}><Package size={18}/><span>Catalogue</span></button><button className="send-button" aria-label={noteMode?'Save internal note':'Send message'} disabled={busy||(!draft.trim()&&!attachment)||!noteMode&&!open}><Send size={20}/></button></form><div className="composer-footer">{noteMode?'Only your team can see internal notes.':'Human replies automatically pause AI when enabled in settings.'}{demo&&<button className="link" onClick={()=>setDialog({type:'simulate'})}>Simulate incoming</button>}</div></div></section>
-{details&&<aside className="contact-panel"><div className="panel-title"><strong>Contact details</strong><button className="icon-button" aria-label="Close contact details" onClick={()=>setDetails(false)}><X size={17}/></button></div><div className="contact-summary"><span className="avatar large">{initials(contact.name)}</span><h3>{contact.name}</h3><p>{contact.company}</p><span>{contact.phone}</span><button className="secondary" onClick={()=>setDialog({type:'contact',row:contact})}>Edit contact</button></div><div className="detail-section"><h4>Tags <button className="icon-button" aria-label="Edit tags" onClick={()=>setDialog({type:'contact',row:contact})}><Plus size={15}/></button></h4><div className="tags">{contact.tags.map(x=><span key={x} className={x==='High Priority'?'red':''}>{x}</span>)}</div></div><div className="detail-section"><h4>Assigned to</h4><select aria-label="Assigned agent" value={conv.assigned_to||''} onChange={e=>act({type:'assign',id:selected,values:{assigned_to:e.target.value||null}})}><option value="">Unassigned</option>{data.members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></div><div className="detail-section"><h4>Internal notes <button className="icon-button" aria-label="Add internal note" onClick={()=>setNoteMode(true)}><Plus size={15}/></button></h4>{notes.length?notes.map(n=><div className="note-card" key={n.id}><p>{n.body}</p><small>{n.author_name} · {time(n.created_at)}</small></div>):<p className="muted">No notes yet.</p>}</div><div className="detail-section"><h4>Conversation activity</h4><div className="timeline-item"><Clock size={14}/><span>Last message<small>{new Date(conv.updated_at).toLocaleString('en-IN')}</small></span></div>{data.audit_logs.filter(x=>x.conversation_id===selected).slice(0,4).map(x=><div className="timeline-item" key={x.id}><span className="timeline-dot"/><span>{x.body}<small>{time(x.created_at)}</small></span></div>)}</div><div className="detail-section"><h4>Campaign history</h4>{data.campaign_recipients.filter(r=>r.contact_id===contact.id).map(r=><p key={r.id}>{data.campaigns.find(c=>c.id===r.campaign_id)?.name} · {r.status}</p>)}<small className="muted">{contact.opted_in?'Marketing opt-in recorded':'Marketing opt-in not recorded'}</small></div></aside>}</>:<section className="empty inbox-empty"><MessageSquare size={42}/><h2>Your next conversation starts here</h2><p>Add a contact or connect WhatsApp to receive messages.</p>{createButton('New conversation','new-chat')}</section>}</main>:<main className="page-content">{toolbar}
-{page==='Contacts'&&<><div className="section-toolbar"><p>{data.contacts.length} contacts · Keep every relationship in context</p><button className="secondary" onClick={()=>setDialog({type:'import'})}><Download size={16}/>Import CSV</button></div><div className="table-wrap"><table><thead><tr><th>Contact</th><th>Company</th><th>Tags</th><th>Consent</th><th/></tr></thead><tbody>{data.contacts.filter(match).map(c=><tr key={c.id}><td><button className="table-contact" onClick={()=>setDialog({type:'contact',row:c})}><span className="avatar small">{initials(c.name)}</span><span><b>{c.name}</b><small>{c.phone}</small></span></button></td><td>{c.company||'—'}</td><td><div className="tags">{c.tags.map(t=><span key={t}>{t}</span>)}</div></td><td><span className={`pill ${c.opted_in?'green':'gray'}`}>{c.opted_in?'Opted in':'Not recorded'}</span></td><td><button className="secondary" onClick={()=>openContact(c)}><MessageSquare size={15}/>Message</button></td></tr>)}</tbody></table></div></>}
-{page==='Templates'&&<><div className="section-toolbar"><p>Official templates and your team’s saved replies</p><button className="secondary" disabled={busy||demo||!manager} onClick={()=>act({type:'sync_templates'},'Templates synced from Meta')}><RefreshCw size={16}/>Sync from Meta</button></div>{demo&&<div className="notice">Sample templates are labelled Demo. Live approval status comes only from Meta.</div>}<div className="cards">{data.templates.filter(match).map(t=><article className="card template-card" key={t.id}><div className="card-heading"><span className="feature-icon"><FileText/></span><span className={`pill ${t.status==='APPROVED'?'green':'gray'}`}>{t.status}</span></div><h3>{t.name.replaceAll('_',' ')}</h3><p>{t.body}</p><div className="card-footer"><small>{t.category} · {t.language}</small><button className="secondary" onClick={()=>setDialog({type:'template-preview',row:t})}>Preview<ArrowUpRight size={15}/></button></div></article>)}</div><h2 className="section-heading">Quick replies <span>Type / in the composer</span></h2><div className="cards">{data.quick_replies.filter(match).map(q=><article className="card" key={q.id}><h3 className="green-text">{q.shortcut}</h3><p>{q.body}</p><button className="link" onClick={()=>setDialog({type:'quick_reply',row:q})}>Edit reply</button></article>)}</div></>}
-{page==='Campaigns'&&<>{stats([['Campaigns',data.campaigns.length],['Scheduled',data.campaigns.filter(c=>c.status==='scheduled').length],['Recipients',data.campaign_recipients.length],['Delivered',data.campaign_recipients.filter(r=>['delivered','read'].includes(r.status)).length]])}<div className="section-toolbar"><p>Reach the right audience with approved templates.</p><span className="pill green"><ShieldCheck size={13}/>Opt-in contacts only</span></div>{!data.campaigns.length?<div className="empty big"><Megaphone size={38}/><h2>Make your first connection at scale</h2><p>Create a campaign, choose an audience and schedule an approved message.</p>{manager&&createButton('Create campaign','campaign')}</div>:<div className="cards">{data.campaigns.filter(match).map(c=>{const recipients=data.campaign_recipients.filter(r=>r.campaign_id===c.id);return <article className="card" key={c.id}><div className="card-heading"><span className="feature-icon"><Megaphone/></span><span className="pill gray">{c.status}</span></div><h3>{c.name}</h3><p>{c.tag||'Selected / all opted-in contacts'}</p><p>{c.scheduled_at?new Date(c.scheduled_at).toLocaleString('en-IN'):'Send when started'}</p><div className="campaign-counts">{['Recipients','Sent','Delivered','Read','Failed'].map((label,i)=><div key={label}><strong>{i===0?recipients.length:recipients.filter(r=>r.status===label.toLowerCase()).length}</strong><small>{label}</small></div>)}</div><div className="card-footer"><small>{demo?'Local demo':'Official WhatsApp templates'}</small>{c.status==='draft'&&manager&&<button className="primary" disabled={busy} onClick={()=>act({type:'campaign_start',id:c.id},demo?'Campaign simulated locally':'Campaign scheduled')}>{demo?'Simulate campaign':'Start campaign'}<Play size={14}/></button>}</div></article>})}</div>}</>}
-{page==='Catalogue'&&<><p className="section-subtitle">Keep product details ready for every conversation.</p><div className="cards">{data.products.filter(match).map(p=><article className="card product-card" key={p.id}><div className="product-visual">{p.image_url?<img src={p.image_url} alt={p.name}/>:<Package size={56} strokeWidth={1}/>}<span className="pill">{p.category||'Product'}</span></div><h3>{p.name}</h3><p>{p.description}</p><div className="card-footer"><strong>{p.currency} {Number(p.price).toLocaleString('en-IN')}</strong><small>{p.stock} in stock</small></div><div className="card-footer">{manager&&<button className="secondary" onClick={()=>setDialog({type:'product',row:p})}>Edit product</button>}<button className="link" onClick={()=>{if(!selected){notify('Open a conversation first');return;}setCatalogueOpen(true)}}>Share in chat <ArrowUpRight size={15}/></button></div></article>)}</div></>}
-{page==='Automation'&&<><div className="notice"><Workflow size={18}/> Rules run on incoming messages. AI and automated replies respect human takeover.</div>{!data.automation_rules.length?<div className="empty big"><Workflow size={40}/><h2>Put routine work on autopilot</h2><p>Match a keyword, add a tag, assign a teammate or pause AI.</p>{manager&&createButton('Create your first rule','automation')}</div>:<div className="cards">{data.automation_rules.filter(match).map(r=><article className="card" key={r.id}><div className="card-heading"><Workflow/><span className={`pill ${r.enabled?'green':'gray'}`}>{r.enabled?'Active':'Paused'}</span></div><h3>{r.name}</h3><p>When {r.trigger} {r.match&&`contains “${r.match}”`}</p><div className="automation-action"><ChevronRight size={18}/>{r.action}: {r.value||'Pause AI'}</div>{manager&&<button className="secondary" onClick={()=>setDialog({type:'automation',row:r})}>Edit rule</button>}</article>)}</div>}</>}
-{page==='Analytics'&&<><p className="section-subtitle">{demo?'Calculated from your local demo activity.':'Calculated from your workspace database.'}</p>{stats([['Messages sent',(data as any).analytics?.sent??data.messages.filter(m=>m.direction==='out').length],['Messages received',(data as any).analytics?.received??data.messages.filter(m=>m.direction==='in').length],['Conversations',(data as any).analytics?.conversations??data.conversations.length],['AI handling',(data as any).analytics?.ai??data.conversations.filter(c=>c.mode==='ai').length]])}<div className="analytics-grid"><article className="card"><h3>Conversation handling</h3><p>How your team and assistant share the workload</p>{['ai','human','paused'].map(mode=>{const count=data.conversations.filter(c=>c.mode===mode).length;return <div className="metric-bar" key={mode}><div><span>{badge(mode)}</span><b>{count}</b></div><div className="track"><span style={{width:`${count/Math.max(1,data.conversations.length)*100}%`}}/></div></div>})}</article><article className="card"><h3>Message delivery</h3><p>{demo?'Demo messages do not have real delivery receipts.':'Status updates reported by WhatsApp.'}</p>{['queued','sent','delivered','read','failed','unknown','demo'].map(status=><div className="metric-line" key={status}><span>{status}</span><strong>{data.messages.filter(m=>m.direction==='out'&&m.status===status).length}</strong></div>)}</article></div></>}
-{page==='Team'&&<><p className="section-subtitle">Shared conversations. Clear ownership.</p><div className="cards">{data.members.filter(match).map(m=><article className="card member-card" key={m.id}><span className="avatar large">{initials(m.name)}</span><h3>{m.name}</h3><span className="pill green">{m.role}</span><p>{m.status}</p><small>{data.conversations.filter(c=>c.assigned_to===m.id).length} assigned conversations</small>{admin&&m.role!=='owner'&&!demo&&<button className="secondary" onClick={()=>setDialog({type:'member',row:{...m,user_id:m.id}})}>Change role</button>}</article>)}</div></>}
-{page==='Settings'&&<><div className="settings-tabs">{['General','AI assistant','Connection','Notifications','Security'].map(t=><button key={t} className={settingsTab===t?'active':''} onClick={()=>setSettingsTab(t)}>{t}</button>)}</div>{['General','AI assistant'].includes(settingsTab)?<form className="settings-form card" key={settingsTab} onSubmit={e=>saveForm(e,'settings')}><h2>{settingsTab==='General'?'Business profile':'AI assistant'}</h2><fieldset disabled={!admin||busy}>{field('Business name','name',data.settings.name,'text',true)}{selectField('Tone','tone',['Professional','Friendly','Concise'],data.settings.tone)}<label className="checkbox-row"><input type="checkbox" name="ai_enabled" defaultChecked={data.settings.ai_enabled}/>Enable AI replies globally</label><label className="checkbox-row"><input type="checkbox" name="auto_pause" defaultChecked={data.settings.auto_pause}/>Auto-pause AI when a human sends a message</label>{area('Business knowledge and instructions','instructions',data.settings.instructions)}{area('Blocked topics and escalation guidance','blocked_topics',data.settings.blocked_topics)}<div className="form-grid">{field('Business hours (shown to AI)','business_hours',data.settings.business_hours)}{field('Time zone','timezone',data.settings.timezone)}{field('Escalate below confidence (0–1)','escalation_threshold',data.settings.escalation_threshold,'number')}</div><button className="primary">Save settings</button></fieldset></form>:settingsTab==='Connection'?<div className="card settings-form"><span className="feature-icon"><MessageSquare/></span><h2>Connect WhatsApp Business</h2><p>Connect your official Meta business account to send and receive messages in Open Chet.</p><div className="metric-line"><span>WhatsApp</span><b>{data.connection?.whatsapp?'Configured':'Not connected'}</b></div><div className="metric-line"><span>AI provider</span><b>{data.connection?.ai?'Configured':'Not configured'}</b></div><div className="notice">Your administrator configures Meta credentials securely on the server. Tokens are never displayed here.</div><p>Webhook path: <code>/api/webhooks/whatsapp</code></p><a className="secondary" href="https://business.facebook.com/" target="_blank" rel="noreferrer">Open Meta Business <ArrowUpRight size={16}/></a></div>:settingsTab==='Notifications'?<div className="card settings-form"><h2>Notifications</h2><p>In-app notifications include incoming messages, assignments, failures and AI escalations.</p><button className="primary" onClick={async()=>{if(!('Notification'in window)){notify('This browser does not support notifications');return;}const permission=await Notification.requestPermission();notify(`Browser notification permission: ${permission}`)}}>Enable browser notifications</button><p className="muted">Web push delivery requires VAPID credentials and a push subscription service; in-app notifications work now.</p></div>:<div className="card settings-form"><h2>Account & security</h2><p>{demo?'This is a local demo workspace.':'Your workspace data is protected by authenticated access and organization membership.'}</p><p>Role: <b>{data.role}</b></p>{demo?<button className="secondary" onClick={()=>setDialog({type:'reset'})}>Reset demo data</button>:<button className="secondary" onClick={async()=>{await browserDB().auth.signOut();router.push('/login')}}><LogOut size={16}/>Sign out</button>}</div>}</>}
-{data.has_more&&<button className="secondary load-more" onClick={async()=>{const n=limit+100;setLimit(n);setData(await api(`/api/bootstrap?limit=${n}`))}}>Load more records</button>}
-</main>}
-<nav className="mobile-nav">{[nav[0],nav[1],nav[2],nav[8]].map(([name,Icon])=><button key={name} className={page===name?'active':''} onClick={()=>navigate(name)}><Icon size={22}/><span>{name==='Inbox'?'Chats':name==='Settings'?'Tools':name}</span></button>)}<select aria-label="More tools" value="" onChange={e=>navigate(e.target.value)}><option value="">More</option>{['Templates','Catalogue','Automation','Analytics','Team'].map(x=><option key={x}>{x}</option>)}</select></nav>
-</div>{toast&&<div className="toast" role="status"><Check size={17}/>{toast}<button className="icon-button" aria-label="Dismiss notification" onClick={()=>setToast('')}><X size={15}/></button></div>}
-{catalogueOpen&&<CataloguePanel products={data.products} conversationName={contact?.name||'Current conversation'} canSend={!!selected&&open} demo={demo} onClose={()=>setCatalogueOpen(false)} onSend={async ids=>{const sent:string[]=[];for(const id of ids){const result=await act({type:'send',id:selected,values:{kind:'product',product_id:id,idempotency_key:crypto.randomUUID()}});if(!result)break;sent.push(id);}return sent;}}/>}
-{dialog&&<Dialog title={({'contact':dialog.row?'Edit contact':'Add contact','new-chat':'Start a conversation','send-template':'Choose a template','template-preview':'Template preview','quick_reply':'Quick reply','campaign':'Create campaign','product':'Product details','automation':'Automation rule','member':'Team member','import':'Import contacts','simulate':'Simulate incoming message','share-product':'Share a product','reset':'Reset demo workspace'} as Record<string,string>)[dialog.type]||dialog.type} onClose={()=>setDialog(null)}>
-{dialog.type==='contact'&&<form onSubmit={e=>saveForm(e,'contact',dialog.row?.id)}><div className="form-grid">{field('Name','name',dialog.row?.name,'text',true)}{field('Phone (with country code)','phone',dialog.row?.phone||'+91','tel',true)}{field('Company','company',dialog.row?.company)}{field('Category','category',dialog.row?.category)}</div>{field('Tags (comma separated)','tags',dialog.row?.tags?.join(', '))}{selectField('Priority','priority',['normal','high'],dialog.row?.priority)}{area('Custom fields (JSON)','custom_fields',JSON.stringify(dialog.row?.custom_fields||{}))}<label className="checkbox-row"><input type="checkbox" name="opted_in" defaultChecked={dialog.row?.opted_in}/>I have recorded this contact’s consent to receive marketing messages</label><button className="primary" disabled={busy}>Save contact</button></form>}
-{dialog.type==='new-chat'&&<div className="picker-list">{data.contacts.map(c=><button key={c.id} onClick={()=>{setDialog(null);openContact(c)}}><span className="avatar small">{initials(c.name)}</span><span><b>{c.name}</b><small>{c.phone}</small></span><ChevronRight size={18}/></button>)}<button className="secondary" onClick={()=>setDialog({type:'contact'})}><Plus size={16}/>Add a new contact</button></div>}
-{dialog.type==='quick_reply'&&<form onSubmit={e=>saveForm(e,'quick_reply',dialog.row?.id)}>{field('Shortcut','shortcut',dialog.row?.shortcut||'/','text',true)}{area('Reply text','body',dialog.row?.body)}<button className="primary" disabled={busy}>Save reply</button></form>}
-{dialog.type==='product'&&<form onSubmit={e=>saveForm(e,'product',dialog.row?.id)}>{field('Product name','name',dialog.row?.name,'text',true)}{area('Description','description',dialog.row?.description)}<div className="form-grid">{field('Category','category',dialog.row?.category)}{field('Price','price',dialog.row?.price||0,'number')}{field('Currency','currency',dialog.row?.currency||'INR')}{field('Stock','stock',dialog.row?.stock||0,'number')}{field('Image URL','image_url',dialog.row?.image_url,'url')}{field('Meta catalogue ID','catalogue_id',dialog.row?.catalogue_id)}{field('Retailer product ID','retailer_id',dialog.row?.retailer_id)}{field('Brand','brand',dialog.row?.brand)}{field('Composition','composition',dialog.row?.composition)}{field('Strength','strength',dialog.row?.strength)}{field('Form type','form_type',dialog.row?.form_type)}{field('Pack size','pack_size',dialog.row?.pack_size)}{selectField('Availability','availability',['in_stock','out_of_stock','on_request'],dialog.row?.availability)}</div>{area('Notes','notes',dialog.row?.notes)}<label className="checkbox-row"><input type="checkbox" name="featured" defaultChecked={dialog.row?.featured}/>Featured product</label><button className="primary" disabled={busy}>Save product</button></form>}
-{dialog.type==='automation'&&<form onSubmit={e=>saveForm(e,'automation',dialog.row?.id)}>{field('Rule name','name',dialog.row?.name,'text',true)}{selectField('When','trigger',['keyword','new_contact','tag'],dialog.row?.trigger)}{field('Match keyword or tag','match',dialog.row?.match)}{selectField('Then','action',['pause','tag','assign','reply'],dialog.row?.action)}{area('Action value (tag, agent UUID, or reply text)','value',dialog.row?.value)}<label className="checkbox-row"><input type="checkbox" name="enabled" defaultChecked={dialog.row?.enabled??true}/>Enabled</label><button className="primary" disabled={busy}>Save rule</button></form>}
-{dialog.type==='member'&&(demo?<div className="notice">Team access uses Supabase accounts. Connect your workspace to add real teammates; the demo includes two sample members.</div>:<form onSubmit={e=>saveForm(e,'member')}>{field('Name','name',dialog.row?.name,'text',true)}{field('Supabase user ID (ask teammate to sign up first)','user_id',dialog.row?.user_id,'text',true)}{selectField('Role','role',data.role==='owner'?['agent','manager','admin']:['agent','manager'],dialog.row?.role)}<button className="primary" disabled={busy}>Save teammate</button></form>)}
-{dialog.type==='campaign'&&<form onSubmit={e=>saveForm(e,'campaign')}>{field('Campaign name','name','','text',true)}<label>Template<select name="template_id" required>{data.templates.filter(t=>demo||t.status==='APPROVED').map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>{field('Variables, in order, separated by | (use {name} for contact name)','variables','{name}')}<label>Audience tag<select name="tag"><option value="">All opted-in contacts</option>{tags.map(t=><option key={t}>{t}</option>)}</select></label><label>Specific contacts (optional, intersects with tag)<select name="contact_ids" multiple>{data.contacts.filter(c=>c.opted_in).map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></label>{field('Schedule (your local time; optional)','scheduled_at','','datetime-local')}<div className="notice">Only contacts with recorded marketing opt-in are eligible. Save a draft, then start it from Campaigns.</div><button className="primary" disabled={busy}>Save campaign draft</button></form>}
-{['send-template','template-preview'].includes(dialog.type)&&<>{dialog.row?<form onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget),id=String(f.get('conversation'));const result=await act({type:'send',id,values:{kind:'template',template_id:dialog.row!.id,variables:templateVariables(dialog.row!.body).map(i=>String(f.get(`var${i}`))),idempotency_key:crypto.randomUUID()}},demo?'Template simulated':'Template queued');if(result)setDialog(null)}}><span className="pill gray">{dialog.row.status} · {dialog.row.language}</span><div className="template-preview"><p>{dialog.row.body}</p></div><label>Conversation<select name="conversation" defaultValue={selected}>{data.conversations.map(c=><option key={c.id} value={c.id}>{data.contacts.find(p=>p.id===c.contact_id)?.name}</option>)}</select></label>{templateVariables(dialog.row.body).map(i=>field(`Variable ${i}`,`var${i}`,i===1?contact?.name:'','text',true))}<button className="primary" disabled={busy||!data.conversations.length||!demo&&dialog.row.status!=='APPROVED'}>{demo?'Simulate template':'Send template'}</button></form>:<div className="picker-list">{data.templates.filter(t=>demo||t.status==='APPROVED').map(t=><button key={t.id} onClick={()=>setDialog({type:'send-template',row:t})}><FileText size={20}/><span><b>{t.name}</b><small>{t.body}</small></span><ChevronRight size={17}/></button>)}{!data.templates.length&&<p>No templates yet. Sync approved templates from the Templates page.</p>}</div>}</>}
-{dialog.type==='simulate'&&<form onSubmit={async e=>{e.preventDefault();const next=await act({type:'simulate',id:selected,values:{body:inputValues(e.currentTarget).body}},'Incoming message simulated. No live AI request was made.');if(next)setDialog(null)}}>{field('Incoming message','body','Hello, could you share your catalogue?','text',true)}<button className="primary">Simulate message</button></form>}
-{dialog.type==='import'&&<><p>CSV columns: name, phone, company, category, tags, notes, custom_fields. Phone numbers must include a country code. Import never creates marketing consent.</p><label>Select CSV<input type="file" accept=".csv,text/csv" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const parsed=Papa.parse<Record<string,string>>(await file.text(),{header:true,skipEmptyLines:true});const seen=new Set(data.contacts.map(c=>c.phone));setImportRows(parsed.data.slice(0,1000).map((r,i)=>{let error=parsed.errors.length?'CSV parse error':'';let phone=r.phone||'';try{phone=normalizePhone(phone);if(seen.has(phone))error='Duplicate phone';seen.add(phone);if(!r.name?.trim())error='Name required';JSON.parse(r.custom_fields||'{}')}catch{error='Invalid phone or custom fields'}return {id:String(i),...r,phone,error}}))}}/></label><div className="import-preview">{importRows.map(r=><div key={r.id}><b>{r.name}</b><span>{r.phone}</span><span className={r.error?'warning':'green-text'}>{r.error||'Ready'}</span></div>)}</div><p>{importRows.filter(r=>!r.error).length} ready · {importRows.filter(r=>r.error).length} skipped</p><button className="primary" disabled={busy||!importRows.some(r=>!r.error)} onClick={async()=>{let count=0;for(const r of importRows.filter(r=>!r.error)){const next=await act({type:'contact',values:{name:r.name,phone:r.phone,company:r.company||'',category:r.category||'',tags:(r.tags||'').split(',').map((s:string)=>s.trim()).filter(Boolean),custom_fields:{...JSON.parse(r.custom_fields||'{}'),...(r.notes?{imported_note:r.notes}:{})},opted_in:false}});if(!next)break;count++;setImportRows(rows=>rows.map(x=>x.id===r.id?{...x,error:'Imported'}:x))}notify(`${count} contacts imported`);}}>Import valid contacts</button></>}
-{dialog.type==='reset'&&<><p>Reset your local demo messages, contacts and settings?</p><button className="primary" onClick={()=>{const d=demoData();setData(d);setSelected(d.conversations[0].id);setDialog(null);notify('Demo reset')}}>Reset demo</button></>}
-</Dialog>}
-</div>}
+import {catalogueDemoProducts} from '@/lib/catalogue';
+import {canAdmin, canManage, messagingOpen, normalizePhone, templateVariables} from '@/lib/domain';
+import {demoAction, demoData} from '@/lib/demo';
+import {api, browserDB, configured} from '@/lib/supabase';
+import type {Action, Contact, Data, Message, Row} from '@/lib/types';
+
+type MainPage = 'Chats' | 'Contacts' | 'Tools' | 'More';
+type ToolView = 'home' | 'quick-replies' | 'media';
+type MoreView = 'home' | 'ai' | 'connection' | 'profile' | 'settings';
+
+const navigation = [
+  ['Chats', MessageSquare], ['Contacts', Users], ['Tools', Zap], ['More', Menu],
+] as const;
+const time = (value: string) => new Date(value).toLocaleTimeString('en-IN', {hour: '2-digit', minute: '2-digit'});
+const initials = (value: string) => value.replace(/^Dr\. /, '').split(' ').slice(0, 2).map((part) => part[0]).join('');
+const inputValues = (form: HTMLFormElement) => Object.fromEntries(new FormData(form));
+
+export default function Workspace() {
+  const router = useRouter();
+  const [data, setData] = useState<Data | null>(null);
+  const [demo, setDemo] = useState(!configured);
+  const [page, setPage] = useState<MainPage>('Chats');
+  const [toolView, setToolView] = useState<ToolView>('home');
+  const [moreView, setMoreView] = useState<MoreView>('home');
+  const [selected, setSelected] = useState('');
+  const [query, setQuery] = useState('');
+  const [draft, setDraft] = useState('');
+  const [chatSearch, setChatSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [mobileChat, setMobileChat] = useState(false);
+  const [contactInfoId, setContactInfoId] = useState('');
+  const [dialog, setDialog] = useState<{type: string; row?: Row} | null>(null);
+  const [catalogueContext, setCatalogueContext] = useState<'chat' | 'manage' | null>(null);
+  const [toast, setToast] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [attachment, setAttachment] = useState<Row | null>(null);
+  const [importRows, setImportRows] = useState<Row[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const state = useRef<Data | null>(null);
+  const messageEnd = useRef<HTMLDivElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const catalogueLoaded = useRef(false);
+
+  useEffect(() => {state.current = data;}, [data]);
+  const notify = (message: string) => {setToast(message); window.setTimeout(() => setToast(''), 5000);};
+
+  async function loadCatalogue() {
+    if (demo || catalogueLoaded.current) return;
+    const products: Row[] = [];
+    let offset = 0;
+    const pageSize = 300;
+    for (;;) {
+      const result = await api(`/api/catalogue?limit=${pageSize}&offset=${offset}`);
+      products.push(...result.products);
+      if (!result.has_more) break;
+      offset += result.products.length;
+    }
+    catalogueLoaded.current = true;
+    setData((current) => current ? {...current, products} : current);
+  }
+
+  async function reload() {
+    const next = await api('/api/bootstrap?limit=100') as Data;
+    if (catalogueLoaded.current && state.current) next.products = state.current.products;
+    setData(next);
+    return next;
+  }
+
+  useEffect(() => {
+    let active = true;
+    const local = !configured || new URLSearchParams(location.search).get('demo') === '1';
+    setDemo(local);
+    if (local) {
+      try {
+        const saved = localStorage.getItem('open-chet-demo-v1');
+        const next = saved ? JSON.parse(saved) : demoData();
+        if (Number(next.catalogue_demo_version || 0) < 3) {
+          const ids = new Set(next.products.map((product: Row) => product.id));
+          next.products.push(...catalogueDemoProducts().filter((product) => !ids.has(product.id)));
+          next.products = next.products.map((product: Row) => Number(product.price) === 0 ? {...product, price: null} : product);
+          next.catalogue_demo_version = 3;
+        }
+        if (active) {setData(next); setSelected(next.conversations[0]?.id || '');}
+      } catch {
+        const next = demoData();
+        setData(next);
+        setSelected(next.conversations[0]?.id || '');
+      }
+    } else {
+      reload().then((next) => {
+        setSelected(next.conversations[0]?.id || '');
+        loadCatalogue().catch(() => {});
+      }).catch(() => router.push('/login'));
+    }
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    return () => {active = false;};
+  }, []);
+
+  useEffect(() => {if (demo && data) localStorage.setItem('open-chet-demo-v1', JSON.stringify(data));}, [data, demo]);
+  useEffect(() => {
+    if (!data || demo) return;
+    const org = data.organization_id;
+    const channel = browserDB().channel(`inbox:${org}`)
+      .on('postgres_changes', {event: '*', schema: 'public', table: 'messages', filter: `organization_id=eq.${org}`}, () => reload())
+      .on('postgres_changes', {event: '*', schema: 'public', table: 'conversations', filter: `organization_id=eq.${org}`}, () => reload())
+      .on('postgres_changes', {event: '*', schema: 'public', table: 'notes', filter: `organization_id=eq.${org}`}, () => reload())
+      .on('postgres_changes', {event: '*', schema: 'public', table: 'notifications', filter: `organization_id=eq.${org}`}, () => reload())
+      .subscribe();
+    const timer = window.setInterval(() => reload().catch(() => {}), 30000);
+    return () => {browserDB().removeChannel(channel); window.clearInterval(timer);};
+  }, [data?.organization_id, demo]);
+  useEffect(() => {messageEnd.current?.scrollIntoView({behavior: 'smooth'});}, [selected, data?.messages.length]);
+
+  async function act(action: Action, success?: string) {
+    setBusy(true);
+    try {
+      let next: Data;
+      if (demo) {
+        next = demoAction(state.current!, action);
+        state.current = next;
+        setData(next);
+      } else {
+        await api('/api/action', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(action)});
+        next = await reload();
+      }
+      if (success) notify(success);
+      return next;
+    } catch (error) {
+      notify((error as Error).message);
+      return null;
+    } finally {setBusy(false);}
+  }
+
+  async function openConversation(id: string) {
+    setSelected(id);
+    setMobileChat(true);
+    setDraft('');
+    setAttachment(null);
+    setShowChatMenu(false);
+    await act({type: 'read', id});
+    if (!demo) {
+      try {
+        const result = await api(`/api/bootstrap?conversation=${id}`);
+        setData((current) => current ? {...current, messages: [...current.messages.filter((message) => message.conversation_id !== id), ...result.messages]} : current);
+      } catch (error) {notify((error as Error).message);}
+    }
+  }
+
+  async function openContact(contact: Contact) {
+    const next = await act({type: 'open', id: contact.id});
+    if (!next) return;
+    setPage('Chats');
+    const conversation = next.conversations.find((item) => item.contact_id === contact.id);
+    if (conversation) openConversation(conversation.id);
+  }
+
+  async function send(event: React.FormEvent) {
+    event.preventDefault();
+    if ((!draft.trim() && !attachment) || !selected) return;
+    const next = await act({
+      type: 'send', id: selected,
+      values: {body: draft.trim() || attachment?.name, kind: attachment?.kind || 'text', media_id: attachment?.media_id, media_url: attachment?.media_url, idempotency_key: crypto.randomUUID()},
+    });
+    if (next) {setDraft(''); setAttachment(null);}
+  }
+
+  async function upload(file: File) {
+    if (file.size > 16 * 1024 * 1024) {notify('Maximum attachment size is 16 MB'); return;}
+    setBusy(true);
+    try {
+      if (demo) {
+        const kind = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'document';
+        setAttachment({id: crypto.randomUUID(), name: file.name, kind, media_url: URL.createObjectURL(file)});
+      } else {
+        const form = new FormData(); form.set('file', file);
+        setAttachment({id: crypto.randomUUID(), ...await api('/api/media', {method: 'POST', body: form})});
+      }
+    } catch (error) {notify((error as Error).message);} finally {setBusy(false);}
+  }
+
+  async function downloadMedia(message: Message) {
+    if (demo) {notify('Demo media is only available in its original browser session'); return;}
+    try {
+      const {data: {session}} = await browserDB().auth.getSession();
+      const response = await fetch(`/api/media?message=${message.id}`, {headers: {Authorization: `Bearer ${session?.access_token}`}});
+      if (!response.ok) throw Error('Media could not be downloaded');
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = message.body || 'attachment'; anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {notify((error as Error).message);}
+  }
+
+  function navigate(name: MainPage) {
+    setPage(name); setQuery(''); setMobileChat(false); setShowChatMenu(false);
+    if (name === 'Tools') setToolView('home');
+    if (name === 'More') setMoreView('home');
+  }
+
+  async function openCatalogue(context: 'chat' | 'manage') {
+    if (!demo) await loadCatalogue().catch((error) => notify((error as Error).message));
+    setCatalogueContext(context);
+  }
+
+  async function saveForm(event: React.FormEvent<HTMLFormElement>, type: string, id?: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values: any = inputValues(form);
+    if (type === 'contact') {
+      values.tags = String(values.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean);
+      values.opted_in = values.opted_in === 'on';
+      try {values.custom_fields = JSON.parse(String(values.custom_fields || '{}'));} catch {notify('Custom fields must be a JSON object'); return;}
+    }
+    if (type === 'product') {
+      values.featured = values.featured === 'on';
+      values.price = values.price === '' ? null : Number(values.price);
+    }
+    const next = await act({type, id, values}, 'Saved');
+    if (next) {
+      setDialog(null);
+      if (type === 'product') {catalogueLoaded.current = false; await loadCatalogue().catch(() => {});}
+    }
+  }
+
+  function field(label: string, name: string, value: unknown = '', type = 'text', required = false) {
+    return <label key={name}>{label}<input name={name} defaultValue={String(value ?? '')} type={type} step={type === 'number' ? 'any' : undefined} required={required}/></label>;
+  }
+  function area(label: string, name: string, value: unknown = '') {
+    return <label>{label}<textarea name={name} defaultValue={String(value ?? '')} rows={3}/></label>;
+  }
+  function selectField(label: string, name: string, options: string[], value: unknown) {
+    return <label>{label}<select name={name} defaultValue={String(value ?? options[0])}>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
+  }
+
+  if (!data) return <div className="loading"><span className="brand-icon"><MessageSquare/></span><h2>Opening Open Chet…</h2><a href="/login">Sign in</a></div>;
+
+  const conversation = data.conversations.find((item) => item.id === selected);
+  const contact = data.contacts.find((item) => item.id === conversation?.contact_id);
+  const messagingWindowOpen = messagingOpen(conversation?.last_inbound_at || null);
+  const manager = canManage(data.role);
+  const admin = canAdmin(data.role);
+  const visibleConversations = data.conversations.filter((item) => {
+    const person = data.contacts.find((candidate) => candidate.id === item.contact_id);
+    return [person?.name, person?.phone, person?.company, item.preview].join(' ').toLowerCase().includes(query.toLowerCase());
+  }).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  const messages = data.messages.filter((message) => message.conversation_id === selected && message.body.toLowerCase().includes(chatSearch.toLowerCase()));
+  const quickReplies = data.quick_replies.filter((reply) => `${reply.shortcut} ${reply.body}`.toLowerCase().includes(query.toLowerCase()));
+  const infoContact = data.contacts.find((item) => item.id === contactInfoId);
+  const infoConversation = data.conversations.find((item) => item.contact_id === contactInfoId);
+  const infoNotes = data.notes.filter((note) => note.conversation_id === infoConversation?.id);
+  const mediaMessages = data.messages.filter((message) => ['image', 'document', 'video', 'audio'].includes(message.kind));
+
+  const contactInfo = infoContact ? <div className="contact-info-overlay" onClick={() => setContactInfoId('')}>
+    <aside className="contact-info-sheet" aria-label="Contact Info" onClick={(event) => event.stopPropagation()}>
+      <header><button className="icon-button" aria-label="Close contact info" onClick={() => setContactInfoId('')}><X/></button><strong>Contact Info</strong><button className="icon-button" aria-label="Edit contact" onClick={() => setDialog({type: 'contact', row: infoContact})}><Pencil size={18}/></button></header>
+      <div className="contact-info-hero"><span className="avatar large">{initials(infoContact.name || infoContact.phone)}</span><h2>{infoContact.name || infoContact.phone}</h2><p>{infoContact.phone}</p>{infoContact.company ? <small>{infoContact.company}</small> : null}<button className="primary" onClick={() => {setContactInfoId(''); openContact(infoContact);}}><MessageCircle size={17}/>Message</button></div>
+      <section><button className="info-row" onClick={() => {setContactInfoId(''); setPage('Tools'); setToolView('media');}}><ImageIcon/><span><b>Media, Links & Documents</b><small>Shared files and attachments</small></span><ChevronRight/></button></section>
+      <section><h3>Tags</h3><div className="tags">{infoContact.tags.length ? infoContact.tags.map((tag) => <span key={tag}>{tag}</span>) : <small>No tags</small>}</div></section>
+      <section><h3>Notes</h3>{infoNotes.length ? infoNotes.map((note) => <p className="note-card" key={note.id}>{note.body}</p>) : <p className="muted">No notes yet.</p>}</section>
+      <section><h3>Business details</h3><div className="detail-line"><span>Company</span><b>{infoContact.company || '—'}</b></div><div className="detail-line"><span>Category</span><b>{infoContact.category || '—'}</b></div><div className="detail-line"><span>Phone</span><b>{infoContact.phone}</b></div></section>
+    </aside>
+  </div> : null;
+
+  return <div className={`app mvp-app ${mobileChat ? 'mobile-chat' : ''}`}>
+    <aside className="sidebar mvp-sidebar">
+      <Link href="/" className="brand"><span className="brand-icon"><MessageSquare size={23}/></span><span>Open <b>Chet</b></span></Link>
+      <nav>{navigation.map(([name, Icon]) => <button key={name} className={page === name ? 'nav-item active' : 'nav-item'} onClick={() => navigate(name)}><Icon size={20}/><span>{name}</span>{name === 'Chats' && data.conversations.some((item) => item.unread) ? <b>{data.conversations.filter((item) => item.unread).length}</b> : null}</button>)}</nav>
+      <div className="sidebar-bottom"><button className="profile" onClick={() => navigate('More')}><span className="avatar small">{initials(data.members.find((member) => member.id === data.user_id)?.name || 'You')}</span><span><strong>{data.members.find((member) => member.id === data.user_id)?.name || 'You'}</strong><small>{data.role}</small></span><Settings size={17}/></button></div>
+    </aside>
+    <div className="main-shell">
+      <header className="topbar mvp-topbar"><div className="mobile-brand">Open Chet</div><div className="breadcrumb"><strong>{page}</strong></div><div className="topbar-right"><span className={`connection ${demo ? 'demo' : ''}`}><span/>{demo ? 'Demo workspace' : data.connection?.whatsapp ? 'WhatsApp connected' : 'Setup needed'}</span><button className="icon-button" aria-label="Notifications" onClick={() => setShowNotifications((value) => !value)}><Bell size={20}/></button></div></header>
+      {demo ? <div className="demo-banner"><span><ShieldCheck size={14}/>Demo data · Messages stay on this device.</span><a href="/login">Connect your business <ArrowRight size={13}/></a></div> : null}
+      {showNotifications ? <div className="notifications"><h3>Notifications</h3>{data.notifications.length ? data.notifications.slice(0, 10).map((notification) => <p key={notification.id}>{notification.body}</p>) : <p>You’re all caught up.</p>}<button className="link" onClick={() => act({type: 'notify_read'})}>Mark all as read</button></div> : null}
+
+      {page === 'Chats' ? <main className="inbox mvp-inbox">
+        <section className="chat-list">
+          <div className="mobile-chats-heading"><strong>Chats</strong><button className="icon-button" aria-label="New conversation" onClick={() => setDialog({type: 'new-chat'})}><Plus/></button></div>
+          <div className="search chat-list-search"><Search size={18}/><input placeholder="Search chats…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
+          <div className="conversation-scroll">{visibleConversations.map((item) => {
+            const person = data.contacts.find((candidate) => candidate.id === item.contact_id);
+            const displayName = person?.name || person?.phone || 'Unknown contact';
+            return <button key={item.id} className={`conversation ${selected === item.id ? 'selected' : ''}`} onClick={() => openConversation(item.id)} aria-label={`${displayName} ${item.preview}`}>
+              <span className={`avatar color-${data.contacts.findIndex((candidate) => candidate.id === item.contact_id) % 4}`}>{initials(displayName)}</span>
+              <div className="conversation-copy"><div className="conversation-title"><strong>{displayName}</strong><time>{time(item.updated_at)}</time></div><div className="conversation-preview"><p>{item.preview || 'Start a conversation'}</p>{item.unread > 0 ? <b className="unread">{item.unread}</b> : null}</div></div>
+            </button>;
+          })}{!visibleConversations.length ? <div className="empty"><Search/><h3>No chats found</h3></div> : null}</div>
+        </section>
+        {conversation && contact ? <section className="chat-panel">
+          <header className="chat-header">
+            <button className="icon-button mobile-back" aria-label="Back to chats" onClick={() => setMobileChat(false)}><ArrowLeft/></button>
+            <span className="avatar">{initials(contact.name || contact.phone)}</span>
+            <button className="contact-heading" onClick={() => setContactInfoId(contact.id)}><strong>{contact.name || contact.phone}</strong><small>{contact.company || contact.phone}</small></button>
+            <button className="icon-button" aria-label="Search in conversation" onClick={() => setShowSearch((value) => !value)}><Search size={19}/></button>
+            <div className="chat-menu-wrap"><button className="icon-button" aria-label="More conversation actions" aria-expanded={showChatMenu} onClick={() => setShowChatMenu((value) => !value)}><MoreVertical size={20}/></button>
+              {showChatMenu ? <div className="chat-menu" role="menu">
+                <button onClick={() => {setContactInfoId(contact.id); setShowChatMenu(false);}}><Info/>Contact Info</button>
+                <button onClick={() => {setShowSearch(true); setShowChatMenu(false);}}><Search/>Search</button>
+                <button onClick={() => {setPage('Tools'); setToolView('media'); setMobileChat(false); setShowChatMenu(false);}}><ImageIcon/>Media / Documents</button>
+                <button onClick={() => {openCatalogue('chat'); setShowChatMenu(false);}}><Package/>Catalogue</button>
+                <button disabled={busy} onClick={() => {act({type: 'mode', id: selected, values: {mode: conversation.mode === 'ai' ? 'human' : 'ai'}}); setShowChatMenu(false);}}>{conversation.mode === 'ai' ? <UserRound/> : <Bot/>}{conversation.mode === 'ai' ? 'Take Over' : 'Resume AI'}</button>
+                <button className="danger" onClick={() => {setDialog({type: 'clear-chat'}); setShowChatMenu(false);}}><X/>Clear Chat</button>
+              </div> : null}
+            </div>
+          </header>
+          {showSearch ? <div className="search chat-search"><Search size={16}/><input aria-label="Find in chat" placeholder="Find a message" value={chatSearch} onChange={(event) => setChatSearch(event.target.value)}/><button className="icon-button" onClick={() => {setShowSearch(false); setChatSearch('');}}><X/></button></div> : null}
+          <div className="messages">
+            {!demo && messages.length >= 50 ? <button className="secondary load-more" onClick={async () => {const result = await api(`/api/bootstrap?conversation=${selected}&before=${encodeURIComponent(messages[0].created_at)}`); setData((current) => current ? {...current, messages: [...result.messages, ...current.messages]} : current);}}>Load older messages</button> : null}
+            <div className="chat-security"><ShieldCheck size={13}/>{demo ? 'Demo conversation' : 'Messages are saved securely'}</div>
+            {messages.map((message, index) => <div key={message.id}>
+              {(index === 0 || new Date(messages[index - 1].created_at).toDateString() !== new Date(message.created_at).toDateString()) ? <div className="date-divider">{new Date(message.created_at).toLocaleDateString('en-IN', {day: 'numeric', month: 'long'})}</div> : null}
+              <div className={`message-row ${message.direction}`}><div className={`message-bubble ${message.direction}`}>
+                {message.kind === 'image' && message.media_url?.startsWith('blob:') ? <img className="message-image" src={message.media_url} alt={message.body || 'Attachment'}/> : null}
+                {message.kind === 'video' && message.media_url?.startsWith('blob:') ? <video controls src={message.media_url}/> : null}
+                {message.kind === 'audio' && message.media_url?.startsWith('blob:') ? <audio controls src={message.media_url}/> : null}
+                {['image', 'document', 'video', 'audio'].includes(message.kind) && !message.media_url ? <button className="attachment-link" onClick={() => downloadMedia(message)}><Download size={18}/>Open {message.kind}</button> : null}
+                {message.kind === 'template' ? <span className="template-label"><FileText size={12}/>Template message</span> : null}
+                {message.kind === 'product' && message.product_snapshot ? <ProductMessage product={message.product_snapshot}/> : <p>{message.body}</p>}
+                <div className="message-meta"><time>{time(message.created_at)}</time>{message.direction === 'out' ? message.status === 'read' ? <CheckCheck size={15} className="read"/> : message.status === 'delivered' ? <CheckCheck size={15}/> : message.status === 'sent' ? <Check size={15}/> : message.status === 'demo' ? <span>Demo</span> : <span>{message.status}</span> : null}</div>
+              </div></div>
+            </div>)}<div ref={messageEnd}/>
+          </div>
+          <div className="composer-wrap compact-composer-wrap">
+            {!messagingWindowOpen ? <div className="window-state"><span className="warning"><Clock size={12}/>24-hour window closed · approved template required</span></div> : null}
+            {attachment ? <div className="attachment-preview"><Paperclip size={15}/>{attachment.name}<button className="icon-button" aria-label="Remove attachment" onClick={() => setAttachment(null)}><X size={15}/></button></div> : null}
+            {draft.startsWith('/') ? <div className="quick-suggestions">{data.quick_replies.filter((reply) => reply.shortcut.startsWith(draft)).map((reply) => <button key={reply.id} onClick={() => setDraft(reply.body)}><b>{reply.shortcut}</b>{reply.body}</button>)}</div> : null}
+            <form className="composer" onSubmit={send}>
+              <button type="button" className="icon-button" aria-label="Add emoji" onClick={() => setDraft((value) => `${value} 😊`)}><Smile size={21}/></button>
+              <button type="button" className="icon-button" aria-label="Attach file" disabled={!messagingWindowOpen} onClick={() => fileInput.current?.click()}><Paperclip size={21}/></button>
+              <input type="file" hidden ref={fileInput} accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,audio/mpeg,audio/ogg,audio/mp4" onChange={(event) => {if (event.target.files?.[0]) upload(event.target.files[0]); event.target.value = '';}}/>
+              <input aria-label="Message" placeholder={messagingWindowOpen ? 'Type a message…' : 'Choose an approved template'} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={!messagingWindowOpen}/>
+              {!messagingWindowOpen ? <button type="button" className="icon-button" aria-label="Choose approved template" onClick={() => setDialog({type: 'send-template'})}><FileText size={20}/></button> : null}
+              <button type="button" className="icon-button catalogue-icon" aria-label="Open catalogue" onClick={() => openCatalogue('chat')}><Package size={20}/></button>
+              <button className="send-button" aria-label="Send message" disabled={busy || (!draft.trim() && !attachment) || !messagingWindowOpen}><Send size={20}/></button>
+            </form>
+          </div>
+        </section> : <section className="empty inbox-empty"><MessageSquare size={42}/><h2>Select a chat</h2><p>Choose a conversation to view messages.</p></section>}
+      </main> : null}
+
+      {page === 'Contacts' ? <main className="page-content mvp-page"><div className="simple-page-header"><div><h1>Contacts</h1><p>{data.contacts.length} contacts</p></div><button className="primary" onClick={() => setDialog({type: 'contact'})}><Plus/>Add</button></div><div className="search page-search"><Search/><input aria-label="Search contacts" placeholder="Search contacts…" value={query} onChange={(event) => setQuery(event.target.value)}/></div><div className="contacts-list">{data.contacts.filter((item) => [item.name, item.phone, item.company].join(' ').toLowerCase().includes(query.toLowerCase())).map((item) => <button className="contact-list-item" key={item.id} onClick={() => setContactInfoId(item.id)}><span className="avatar">{initials(item.name || item.phone)}</span><span><b>{item.name || item.phone}</b><small>{item.phone}{item.company ? ` · ${item.company}` : ''}</small></span><ChevronRight/></button>)}</div></main> : null}
+
+      {page === 'Tools' ? <main className="page-content mvp-page">
+        {toolView === 'home' ? <><div className="simple-page-header"><div><h1>Tools</h1><p>Everyday conversation tools</p></div></div><div className="tools-grid">
+          <button onClick={() => openCatalogue('manage')}><span><Package/></span><b>Catalogue</b><small>Browse and manage products</small></button>
+          <button onClick={() => setToolView('quick-replies')}><span><Zap/></span><b>Quick Replies</b><small>Saved answers for chat</small></button>
+          <button onClick={() => setDialog({type: 'import'})}><span><Upload/></span><b>Import Contacts</b><small>Add contacts from CSV</small></button>
+          <button onClick={() => setToolView('media')}><span><ImageIcon/></span><b>Media / Documents</b><small>Shared files and links</small></button>
+        </div></> : null}
+        {toolView === 'quick-replies' ? <><div className="subpage-header"><button className="icon-button" onClick={() => setToolView('home')}><ChevronLeft/></button><div><h1>Quick Replies</h1><p>Type / in chat to use one</p></div><button className="primary" onClick={() => setDialog({type: 'quick_reply'})}><Plus/>Add</button></div><div className="quick-reply-list">{quickReplies.map((reply) => <article key={reply.id}><div><b>{reply.shortcut}</b><p>{reply.body}</p></div><button className="icon-button" aria-label={`Edit ${reply.shortcut}`} onClick={() => setDialog({type: 'quick_reply', row: reply})}><Pencil/></button></article>)}</div></> : null}
+        {toolView === 'media' ? <><div className="subpage-header"><button className="icon-button" onClick={() => setToolView('home')}><ChevronLeft/></button><div><h1>Media / Documents</h1><p>Files shared in conversations</p></div></div>{mediaMessages.length ? <div className="media-list">{mediaMessages.map((message) => <button key={message.id} onClick={() => downloadMedia(message)}><FileText/><span><b>{message.body || message.kind}</b><small>{message.kind} · {new Date(message.created_at).toLocaleDateString('en-IN')}</small></span><Download/></button>)}</div> : <div className="empty big"><ImageIcon/><h2>No media yet</h2><p>Images and documents from chats will appear here.</p></div>}</> : null}
+      </main> : null}
+
+      {page === 'More' ? <main className="page-content mvp-page">
+        {moreView === 'home' ? <><div className="simple-page-header"><div><h1>More</h1><p>Business and assistant settings</p></div></div><div className="more-list">
+          <button onClick={() => setMoreView('ai')}><Sparkles/><span><b>AI Settings</b><small>Instructions, tone and escalation</small></span><ChevronRight/></button>
+          <button onClick={() => setMoreView('connection')}><MessageSquare/><span><b>WhatsApp Connection</b><small>{data.connection?.whatsapp ? 'Connected' : 'Setup needed'}</small></span><ChevronRight/></button>
+          <button onClick={() => setMoreView('profile')}><BriefcaseBusiness/><span><b>Business Profile</b><small>{data.settings.name}</small></span><ChevronRight/></button>
+          <button onClick={() => setMoreView('settings')}><Settings/><span><b>Basic Settings</b><small>Hours, timezone and account</small></span><ChevronRight/></button>
+        </div></> : null}
+        {moreView !== 'home' ? <div className="subpage-header"><button className="icon-button" onClick={() => setMoreView('home')}><ChevronLeft/></button><div><h1>{{ai: 'AI Settings', connection: 'WhatsApp Connection', profile: 'Business Profile', settings: 'Basic Settings'}[moreView]}</h1></div></div> : null}
+        {moreView === 'ai' ? <form className="settings-form card" onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); await act({type: 'settings', values: {...data.settings, ai_enabled: values.ai_enabled === 'on', auto_pause: true, tone: values.tone, instructions: values.instructions, blocked_topics: values.blocked_topics}}, 'AI settings saved');}}><fieldset disabled={!admin || busy}><label className="checkbox-row"><input type="checkbox" name="ai_enabled" defaultChecked={data.settings.ai_enabled}/>Enable AI replies globally</label><label className="checkbox-row locked-setting"><input type="checkbox" checked readOnly/>Pause AI after every manual reply</label>{selectField('Tone', 'tone', ['Professional', 'Friendly', 'Concise'], data.settings.tone)}{area('Business instructions / knowledge', 'instructions', data.settings.instructions)}{area('Escalation guidance', 'blocked_topics', data.settings.blocked_topics)}<button className="primary">Save AI settings</button></fieldset></form> : null}
+        {moreView === 'connection' ? <div className="card settings-form"><span className="feature-icon"><MessageSquare/></span><h2>{data.connection?.whatsapp ? 'WhatsApp is connected' : 'Connect WhatsApp Business'}</h2><p>Official Meta credentials are stored securely on the server.</p><div className="detail-line"><span>WhatsApp</span><b>{data.connection?.whatsapp ? 'Configured' : 'Not connected'}</b></div><div className="detail-line"><span>AI provider</span><b>{data.connection?.ai ? 'Configured' : 'Not configured'}</b></div><p><code>/api/webhooks/whatsapp</code></p></div> : null}
+        {moreView === 'profile' ? <form className="settings-form card" onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); await act({type: 'settings', values: {...data.settings, name: values.name}}, 'Business profile saved');}}><fieldset disabled={!admin || busy}>{field('Business name', 'name', data.settings.name, 'text', true)}<button className="primary">Save profile</button></fieldset></form> : null}
+        {moreView === 'settings' ? <form className="settings-form card" onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); await act({type: 'settings', values: {...data.settings, business_hours: values.business_hours, timezone: values.timezone}}, 'Settings saved');}}><fieldset disabled={!admin || busy}>{field('Business hours', 'business_hours', data.settings.business_hours)}{field('Time zone', 'timezone', data.settings.timezone)}<button className="primary">Save settings</button></fieldset><hr/>{demo ? <button type="button" className="secondary" onClick={() => setDialog({type: 'reset'})}>Reset demo data</button> : <button type="button" className="secondary" onClick={async () => {await browserDB().auth.signOut(); router.push('/login');}}><LogOut/>Sign out</button>}</form> : null}
+      </main> : null}
+
+      <nav className="mobile-nav">{navigation.map(([name, Icon]) => <button key={name} className={page === name ? 'active' : ''} onClick={() => navigate(name)}><Icon size={22}/><span>{name}</span></button>)}</nav>
+    </div>
+
+    {toast ? <div className="toast" role="status"><Check size={17}/>{toast}<button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><X size={15}/></button></div> : null}
+    {contactInfo}
+    {catalogueContext ? <CataloguePanel products={data.products} context={catalogueContext} conversationName={contact?.name || contact?.phone} canSend={catalogueContext === 'chat' && Boolean(selected) && messagingWindowOpen} demo={demo} onClose={() => setCatalogueContext(null)} onSend={async (ids) => {const sent: string[] = []; for (const id of ids) {const result = await act({type: 'send', id: selected, values: {kind: 'product', product_id: id, idempotency_key: crypto.randomUUID()}}); if (!result) break; sent.push(id);} return sent;}} onAdd={manager ? () => {setCatalogueContext(null); setDialog({type: 'product'});} : undefined} onEdit={manager ? (product) => {setCatalogueContext(null); setDialog({type: 'product', row: product});} : undefined}/> : null}
+
+    {dialog ? <Dialog title={{contact: dialog.row ? 'Edit contact' : 'Add contact', 'new-chat': 'Start a conversation', 'send-template': 'Choose an approved template', quick_reply: 'Quick reply', product: 'Product details', import: 'Import contacts', 'clear-chat': 'Clear chat', reset: 'Reset demo workspace'}[dialog.type] || dialog.type} onClose={() => setDialog(null)}>
+      {dialog.type === 'contact' ? <form onSubmit={(event) => saveForm(event, 'contact', dialog.row?.id)}><div className="form-grid">{field('Name', 'name', dialog.row?.name, 'text', true)}{field('Phone (with country code)', 'phone', dialog.row?.phone || '+91', 'tel', true)}{field('Company / clinic', 'company', dialog.row?.company)}{field('Category', 'category', dialog.row?.category)}</div>{field('Tags (comma separated)', 'tags', dialog.row?.tags?.join(', '))}{area('Custom fields (JSON)', 'custom_fields', JSON.stringify(dialog.row?.custom_fields || {}))}<label className="checkbox-row"><input type="checkbox" name="opted_in" defaultChecked={dialog.row?.opted_in}/>Marketing consent recorded</label><button className="primary" disabled={busy}>Save contact</button></form> : null}
+      {dialog.type === 'new-chat' ? <div className="picker-list">{data.contacts.map((item) => <button key={item.id} onClick={() => {setDialog(null); openContact(item);}}><span className="avatar small">{initials(item.name || item.phone)}</span><span><b>{item.name || item.phone}</b><small>{item.phone}</small></span><ChevronRight/></button>)}<button className="secondary" onClick={() => setDialog({type: 'contact'})}><Plus/>Add contact</button></div> : null}
+      {dialog.type === 'quick_reply' ? <form onSubmit={(event) => saveForm(event, 'quick_reply', dialog.row?.id)}>{field('Shortcut', 'shortcut', dialog.row?.shortcut || '/', 'text', true)}{area('Reply text', 'body', dialog.row?.body)}<button className="primary" disabled={busy}>Save reply</button></form> : null}
+      {dialog.type === 'product' ? <form onSubmit={(event) => saveForm(event, 'product', dialog.row?.id)}>{field('Product name', 'name', dialog.row?.name, 'text', true)}{area('Description', 'description', dialog.row?.description)}<div className="form-grid">{field('Category', 'category', dialog.row?.category)}{field('Price (optional)', 'price', dialog.row?.price ?? '', 'number')}{field('Currency', 'currency', dialog.row?.currency || 'INR')}{field('Stock', 'stock', dialog.row?.stock ?? 0, 'number')}{field('Image URL (optional)', 'image_url', dialog.row?.image_url, 'url')}{field('Meta catalogue ID', 'catalogue_id', dialog.row?.catalogue_id)}{field('Retailer product ID', 'retailer_id', dialog.row?.retailer_id)}{field('Brand', 'brand', dialog.row?.brand)}{field('Composition', 'composition', dialog.row?.composition)}{field('Strength', 'strength', dialog.row?.strength)}{field('Form type', 'form_type', dialog.row?.form_type)}{field('Pack size', 'pack_size', dialog.row?.pack_size)}{selectField('Availability', 'availability', ['in_stock', 'out_of_stock', 'on_request'], dialog.row?.availability)}</div>{area('Notes', 'notes', dialog.row?.notes)}<label className="checkbox-row"><input type="checkbox" name="featured" defaultChecked={dialog.row?.featured}/>Featured product</label><button className="primary" disabled={busy}>Save product</button></form> : null}
+      {dialog.type === 'send-template' ? <div className="picker-list">{data.templates.filter((template) => demo || template.status === 'APPROVED').map((template) => <button key={template.id} onClick={() => setDialog({type: 'send-template-form', row: template})}><FileText/><span><b>{template.name}</b><small>{template.body}</small></span><ChevronRight/></button>)}{!data.templates.length ? <p>No approved templates are available.</p> : null}</div> : null}
+      {dialog.type === 'send-template-form' && dialog.row ? <form onSubmit={async (event) => {event.preventDefault(); const form = new FormData(event.currentTarget); const result = await act({type: 'send', id: selected, values: {kind: 'template', template_id: dialog.row!.id, variables: templateVariables(dialog.row!.body).map((index) => String(form.get(`var${index}`))), idempotency_key: crypto.randomUUID()}}, demo ? 'Template simulated' : 'Template queued'); if (result) setDialog(null);}}><div className="template-preview"><p>{dialog.row.body}</p></div>{templateVariables(dialog.row.body).map((index) => field(`Variable ${index}`, `var${index}`, index === 1 ? contact?.name : '', 'text', true))}<button className="primary" disabled={busy}>Send template</button></form> : null}
+      {dialog.type === 'import' ? <><p>CSV columns: name, phone, company, category, tags, notes, custom_fields. Phone numbers must include a country code.</p><label>Select CSV<input type="file" accept=".csv,text/csv" onChange={async (event) => {const file = event.target.files?.[0]; if (!file) return; const parsed = Papa.parse<Record<string, string>>(await file.text(), {header: true, skipEmptyLines: true}); const seen = new Set(data.contacts.map((item) => item.phone)); setImportRows(parsed.data.slice(0, 1000).map((row, index) => {let error = parsed.errors.length ? 'CSV parse error' : ''; let phone = row.phone || ''; try {phone = normalizePhone(phone); if (seen.has(phone)) error = 'Duplicate phone'; seen.add(phone); if (!row.name?.trim()) error = 'Name required'; JSON.parse(row.custom_fields || '{}');} catch {error = 'Invalid phone or custom fields';} return {id: String(index), ...row, phone, error};}));}}/></label><div className="import-preview">{importRows.map((row) => <div key={row.id}><b>{row.name}</b><span>{row.phone}</span><span className={row.error ? 'warning' : 'green-text'}>{row.error || 'Ready'}</span></div>)}</div><p>{importRows.filter((row) => !row.error).length} ready · {importRows.filter((row) => row.error).length} skipped</p><button className="primary" disabled={busy || !importRows.some((row) => !row.error)} onClick={async () => {let count = 0; for (const row of importRows.filter((item) => !item.error)) {const next = await act({type: 'contact', values: {name: row.name, phone: row.phone, company: row.company || '', category: row.category || '', tags: (row.tags || '').split(',').map((tag: string) => tag.trim()).filter(Boolean), custom_fields: JSON.parse(row.custom_fields || '{}'), opted_in: false}}); if (!next) break; count++;} notify(`${count} contacts imported`); setDialog(null);}}>Import valid contacts</button></> : null}
+      {dialog.type === 'clear-chat' ? <><p>Clear this conversation history from Open Chet? This cannot be undone.</p><button className="danger-button" disabled={busy} onClick={async () => {const next = await act({type: 'clear_chat', id: selected}, 'Chat cleared'); if (next) setDialog(null);}}>Clear chat</button></> : null}
+      {dialog.type === 'reset' ? <><p>Reset local demo messages, contacts and settings?</p><button className="primary" onClick={() => {const next = demoData(); setData(next); setSelected(next.conversations[0].id); setDialog(null); notify('Demo reset');}}>Reset demo</button></> : null}
+    </Dialog> : null}
+  </div>;
+}
