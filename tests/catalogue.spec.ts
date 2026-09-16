@@ -38,7 +38,7 @@ test('MVP navigation stays focused and mobile chats start immediately with searc
   await expect(page.locator('.more-list')).toContainText('Basic Settings');
 });
 
-test('chat hides internal authors, quick replies work, and human takeover persists', async ({page}) => {
+test('chat hides internal authors, quick replies work, and human takeover persists', async ({page}, testInfo) => {
   await page.getByRole('button', {name: /Dr. Arjun Mehta.*Can you share/}).click();
   await expect(page.getByText('AI Reply ON')).toHaveCount(0);
   await expect(page.locator('.ai-bar')).toHaveCount(0);
@@ -52,6 +52,7 @@ test('chat hides internal authors, quick replies work, and human takeover persis
   await page.getByRole('button', {name: 'Take Over', exact: true}).click();
   await page.getByRole('button', {name: 'More conversation actions'}).click();
   await expect(page.getByRole('button', {name: 'Resume AI', exact: true})).toBeVisible();
+  await page.getByRole('button', {name: 'More conversation actions'}).click();
 
   const composer = page.getByRole('textbox', {name: 'Message', exact: true});
   await composer.fill('/wel');
@@ -64,7 +65,7 @@ test('chat hides internal authors, quick replies work, and human takeover persis
   await expect(page.getByRole('button', {name: 'Resume AI', exact: true})).toBeVisible();
 
   await page.reload();
-  await page.getByRole('button', {name: /Dr. Arjun Mehta/}).click();
+  if (testInfo.project.name === 'mobile') await page.locator('.conversation').filter({hasText: 'Dr. Arjun Mehta'}).click();
   await page.getByRole('button', {name: 'More conversation actions'}).click();
   await expect(page.getByRole('button', {name: 'Resume AI', exact: true})).toBeVisible();
 });
