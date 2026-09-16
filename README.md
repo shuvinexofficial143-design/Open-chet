@@ -30,7 +30,7 @@ Open http://localhost:3000. With no Supabase public configuration, the app opens
 
 Copy `.env.example` to `.env.local` and configure its documented values. Never commit credentials.
 
-1. Use a dedicated Supabase project and apply `supabase/migrations/20260916044512_initial_open_chet.sql` through your normal migration workflow. The migration expects Supabase's `auth` and `storage` schemas. It creates a private media bucket and enables Realtime for messages, conversations, notes and notifications when the publication exists.
+1. Use a dedicated Supabase project and apply `supabase/migrations/20260916044512_initial_open_chet.sql` through your normal migration workflow. The migration expects Supabase's `auth` and `storage` schemas. Also apply the additive catalogue metadata migration in the same directory. It creates a private media bucket and enables Realtime for messages, conversations, notes and notifications when the publication exists.
 2. Set the Supabase public URL and publishable key, server-only service-role key and TLS PostgreSQL transaction-pooler `DATABASE_URL`. Configure email/password authentication and your application's allowed auth URLs.
 3. Sign up, confirm your email if required, sign in and create a workspace. Record its organization ID for `WHATSAPP_ORGANIZATION_ID`.
 4. Configure your official Meta business account, phone-number ID, business-account ID, access token, app secret, supported Graph API version and a random webhook verification token.
@@ -68,9 +68,9 @@ npm test
 npm run build
 ```
 
-19 automated tests passed across domain/demo behavior and PostgreSQL migration/RLS tests. Migration tests use PGlite with local stubs for Supabase-owned schemas, not a live Supabase project.
+26 automated tests passed across domain/demo behavior and PostgreSQL migration/RLS tests. Migration tests use PGlite with local stubs for Supabase-owned schemas, not a live Supabase project.
 
-Desktop/mobile browser interaction verification was interrupted and remains outstanding. Passing compilation and unit tests does not establish live integration or production readiness.
+The catalogue workflow also passes two Playwright browser tests against the production build at desktop (1440px) and mobile (390px) sizes: horizontal rails, filters, details, multi-select sending, structured chat cards, persistence after reload, no page errors and no page-level horizontal overflow. Broader non-catalogue browser coverage and live integration checks remain outstanding. Passing these tests does not establish production readiness.
 
 ## Remaining work and limitations
 
@@ -85,3 +85,17 @@ Desktop/mobile browser interaction verification was interrupted and remains outs
 - Do not treat demo template statuses or simulated campaigns as Meta approval or actual delivery.
 
 This is a preserved, buildable MVP checkpoint, not a claim that every requested production feature has been completed or verified.
+
+## In-chat catalogue
+
+Open **Catalogue** in the existing chat composer. The catalogue stays inside a modal sheet without leaving the current conversation. Search name, brand or composition; combine category, brand, form and availability filters; sort by name, newest or availability. Featured products can be filtered separately. Each category is a vertical section, with a horizontally scrolling product rail and desktop arrow controls.
+
+Use View details for composition, strength, brand, form, pack size, availability and notes. Select one or several products, then send them individually to the active conversation. Partial failures preserve the unsent selection. The 24-hour messaging window remains enforced and human sends preserve the existing AI auto-pause behavior.
+
+Product shares render as structured cards in Open Chet. Their metadata is snapshotted at send time, so later product edits do not rewrite chat history. Live snapshots are built from an organization-scoped database lookup, not client-supplied product data. Actual WhatsApp recipient rendering remains controlled by Meta: native product messages require configured Meta catalogue and retailer IDs. No custom scrollable storefront is injected into the recipient's WhatsApp client.
+
+The additive migration `20260916105526_catalogue_metadata.sql` adds product metadata, availability, featured flags, query indexes and message snapshots without replacing existing data. Categories use the existing configurable `products.category` field.
+
+Existing demo workspaces receive 18 sample catalogue entries without resetting conversations, contacts or user-created products. All medical product entries are illustrative; verify composition, strength, manufacturer and packaging before live use. No fabricated manufacturer or product photo is shown: missing images have a clearly labelled fallback, and product photos can be configured through the existing product editor.
+
+Catalogue browser regression tests: after `npm run build`, run `npx playwright install chromium` and `npm run test:e2e`. Optionally set `BROWSER_EXECUTABLE_PATH` to an installed Chromium binary. Screenshots are generated under ignored `test-results/`.
