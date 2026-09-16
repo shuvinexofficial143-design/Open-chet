@@ -1,0 +1,9 @@
+export type Mode='ai'|'paused'|'human';
+export type Role='owner'|'admin'|'manager'|'agent';
+export type Row={id:string;[key:string]:any};
+export type Contact=Row&{name:string;phone:string;company:string;category:string;tags:string[];priority:string;opted_in:boolean;custom_fields:Record<string,string>};
+export type Conversation=Row&{contact_id:string;mode:Mode;assigned_to:string|null;unread:number;last_inbound_at:string|null;updated_at:string;preview:string;version:number};
+export type Message=Row&{conversation_id:string;direction:'in'|'out';kind:string;body:string;status:string;created_at:string;sender_name:string;media_url?:string;media_id?:string};
+export type Settings={name:string;ai_enabled:boolean;auto_pause:boolean;tone:string;instructions:string;blocked_topics:string;business_hours:string;timezone:string;escalation_threshold:number};
+export type Data={organization_id:string;user_id:string;role:Role;contacts:Contact[];conversations:Conversation[];messages:Message[];notes:Row[];templates:Row[];quick_replies:Row[];products:Row[];campaigns:Row[];campaign_recipients:Row[];automation_rules:Row[];members:Row[];audit_logs:Row[];notifications:Row[];settings:Settings;connection?:{whatsapp:boolean;ai:boolean};has_more?:boolean};
+export type Action={type:string;id?:string;values?:Record<string,any>};
