@@ -2,6 +2,7 @@ import {db,failure} from '@/lib/server';
 import {statusAdvance} from '@/lib/domain';
 import {resolveWebhookAccount,type RoutedWhatsAppAccount} from '@/services/whatsapp-routing';
 import {verifySignature} from '@/services/whatsapp.service';
+import {forwardInboundToN8n,n8nConfigured} from '@/services/n8n.service';
 
 export const runtime='nodejs';
 
@@ -21,12 +22,12 @@ export async function POST(req:Request){
         continue;
       }
       const account=await resolveWebhookAccount(value.metadata?.phone_number_id,async phoneNumberId=>{
-        const [row]=await db()`select id,organization_id,phone_number_id,is_active from whatsapp_accounts where phone_number_id=${phoneNumberId}`;
+        const [row]=await db()`select id,organization_id,phone_number_id,business_account_id,is_active from whatsapp_accounts where phone_number_id=${phoneNumberId}`;
         return row?row as RoutedWhatsAppAccount:null;
       });
       if(!account){console.warn('Ignoring WhatsApp webhook for an unknown or disabled phone number');continue;}
       const org=account.organization_id;
-      for(const m of value.messages||[])await db().begin(async sql=>{
+      for(const m of value.messages||[]){const bridgeEvent=await db().begin(async sql=>{
         await sql`select pg_advisory_xact_lock(hashtext(${m.id}))`;
         if((await sql`select id from messages where meta_message_id=${m.id}`).length)return;
         const phone=`+${m.from}`;
@@ -34,7 +35,8 @@ export async function POST(req:Request){
         const existing=await sql`select id from contacts where organization_id=${org} and phone=${phone}`;
         const [contact]=await sql`insert into contacts(organization_id,name,phone,source) values(${org},${name},${phone},'whatsapp') on conflict(organization_id,phone) do update set updated_at=now() returning *`;
         const [settings]=await sql`select settings from organizations where id=${org}`;
-        const [conv]=await sql`insert into conversations(organization_id,whatsapp_account_id,contact_id,mode) values(${org},${account.id},${contact.id},${settings.settings.ai_enabled?'ai':'paused'}) on conflict(organization_id,whatsapp_account_id,contact_id) where whatsapp_account_id is not null do update set updated_at=now() returning *`;
+        const initialMode=n8nConfigured()?'ai':settings.settings.ai_enabled?'ai':'paused';
+        const [conv]=await sql`insert into conversations(organization_id,whatsapp_account_id,contact_id,mode) values(${org},${account.id},${contact.id},${initialMode}) on conflict(organization_id,whatsapp_account_id,contact_id) where whatsapp_account_id is not null do update set updated_at=now() returning *`;
         await sql`select pg_advisory_xact_lock(hashtext(${conv.id}))`;
         const timestamp=new Date(Number(m.timestamp)*1000);
         const kind=m.type||'unsupported';
@@ -54,9 +56,12 @@ export async function POST(req:Request){
           if(rule.action==='reply'&&conv.mode==='ai'&&settings.settings.ai_enabled&&!replied){await sql`insert into messages(organization_id,conversation_id,direction,body,sender_name,payload) values(${org},${conv.id},'out',${rule.value},'Open Chet AI',${sql.json({type:'text',text:{body:rule.value},expected_version:conv.version+1})})`;replied=true;}
         }
         const [fresh]=await sql`select * from conversations where id=${conv.id} and organization_id=${org}`;
-        if(fresh.mode==='ai'&&settings.settings.ai_enabled&&!replied)await sql`insert into ai_sessions(organization_id,conversation_id,input_message_id,expected_version) values(${org},${conv.id},${message.id},${fresh.version})`;
+        if(fresh.mode==='ai'&&settings.settings.ai_enabled&&!n8nConfigured()&&!replied)await sql`insert into ai_sessions(organization_id,conversation_id,input_message_id,expected_version) values(${org},${conv.id},${message.id},${fresh.version})`;
         await sql`insert into notifications(organization_id,conversation_id,body) values(${org},${conv.id},${`New message from ${name}`})`;
+        return fresh.mode==='ai'?{organization_id:org,whatsapp_account_id:account.id,phone_number_id:account.phone_number_id,business_account_id:(account as any).business_account_id,conversation_id:conv.id,contact_id:contact.id,customer_phone:phone,customer_name:name,message_id:m.id,message_type:kind,text:String(content||''),media_id:m[kind]?.id||null,raw_message:m}:null;
       });
+      if(bridgeEvent&&n8nConfigured())try{await forwardInboundToN8n(bridgeEvent)}catch(error){console.warn('n8n bridge delivery failed',error instanceof Error?error.message:'unknown')}
+      }
       for(const s of value.statuses||[])await db().begin(async sql=>{
         const [message]=await sql`select id,status,organization_id from messages where meta_message_id=${s.id} for update`;
         if(!message)return;
