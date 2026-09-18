@@ -189,7 +189,7 @@ export default function Workspace() {
         const kind = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'document';
         setAttachment({id: crypto.randomUUID(), name: file.name, kind, media_url: URL.createObjectURL(file)});
       } else {
-        const form = new FormData(); form.set('file', file);
+        const form = new FormData(); form.set('file', file); form.set('conversation_id', selected);
         setAttachment({id: crypto.randomUUID(), ...await api('/api/media', {method: 'POST', body: form})});
       }
     } catch (error) {notify((error as Error).message);} finally {setBusy(false);}
