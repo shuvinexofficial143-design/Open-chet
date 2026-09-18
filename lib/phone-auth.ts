@@ -1,7 +1,7 @@
 import type {SupabaseClient} from '@supabase/supabase-js';
 
 export const DEFAULT_COUNTRY_CODE = '+91';
-export const OTP_RESEND_SECONDS = 45;
+export const OTP_RESEND_SECONDS = 60;
 
 export const countries = [
   {code: '+91', label: 'India (+91)', digits: 10},
