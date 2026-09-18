@@ -9,9 +9,9 @@ Business messaging MVP built with Next.js, React, TypeScript, Supabase and the o
 - AI on/pause, human takeover, resume AI, automatic pause on human reply and agent assignment.
 - Templates, quick replies, catalogue, basic campaigns, analytics and settings screens.
 - Explicit device-local demo mode; demo messages never reach WhatsApp.
-- Supabase email/password authentication and workspace creation architecture.
+- Supabase phone OTP authentication and first-login workspace creation architecture.
 - Organization-scoped server operations, role checks, normalized migration and read-only client RLS policies.
-- Signed WhatsApp webhook ingestion, message deduplication, delivery-status processing, media and template service integration.
+- Signed, multi-number WhatsApp webhook ingestion, message deduplication, delivery-status processing, media and per-WABA template integration.
 - Database-backed outbound queue and AI worker, version checks to invalidate stale AI responses.
 - PWA manifest, icons and a service worker that does not cache customer records.
 
@@ -31,10 +31,10 @@ Open http://localhost:3000. With no Supabase public configuration, the app opens
 Copy `.env.example` to `.env.local` and configure its documented values. Never commit credentials.
 
 1. Use a dedicated Supabase project and apply `supabase/migrations/20260916044512_initial_open_chet.sql` through your normal migration workflow. The migration expects Supabase's `auth` and `storage` schemas. Also apply the additive catalogue metadata migration in the same directory. It creates a private media bucket and enables Realtime for messages, conversations, notes and notifications when the publication exists.
-2. Set the Supabase public URL and publishable key, server-only service-role key and TLS PostgreSQL transaction-pooler `DATABASE_URL`. Configure email/password authentication and your application's allowed auth URLs.
-3. Sign up, confirm your email if required, sign in and create a workspace. Record its organization ID for `WHATSAPP_ORGANIZATION_ID`.
-4. Configure your official Meta business account, phone-number ID, business-account ID, access token, app secret, supported Graph API version and a random webhook verification token.
-5. Register the HTTPS endpoint `/api/webhooks/whatsapp` with Meta. Subscribe to message and relevant template-status events. Sync approved templates from the Templates screen.
+2. Set the Supabase public URL and publishable key, server-only service-role key and TLS PostgreSQL transaction-pooler `DATABASE_URL`. Enable Supabase Phone authentication and configure an SMS provider.
+3. Generate a 32-byte `WHATSAPP_TOKEN_ENCRYPTION_KEY` (for example, `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`) and store it only as a server environment variable. Never rotate it without re-encrypting saved connection tokens.
+4. Configure the deployment-wide Meta app secret, supported Graph API version and a random webhook verification token. Add each Phone Number ID, WABA ID and access token inside **More → WhatsApp Connection**; tokens are verified and encrypted before storage.
+5. Register the HTTPS endpoint `/api/webhooks/whatsapp` with Meta. Subscribe to message and relevant template-status events. Template sync runs against the selected WhatsApp account.
 6. Configure an OpenAI-compatible AI provider using `AI_BASE_URL`, `AI_API_KEY` and `AI_MODEL`. Enable AI in workspace settings only when ready.
 7. Set a long random `CRON_SECRET`. A trusted scheduler must invoke `GET /api/worker` with `Authorization: Bearer <CRON_SECRET>`. No scheduler is enabled by this checkpoint. Choose frequency and execution limits appropriate to your deployment.
 
@@ -53,7 +53,7 @@ For Vercel, import this repository as a Next.js project and configure the enviro
 - `services/worker.ts`: campaign materialization, AI generation and outbound dispatch.
 - `supabase/migrations`: tenant-scoped schema, constraints, indexes and RLS.
 
-The initial deployment maps one WhatsApp account to one organization using server environment variables. The data model supports multiple organizations, but self-service multi-account onboarding is not implemented. Agents share their organization's inbox; manager/admin actions are restricted separately. Direct client writes are revoked.
+Phone Number IDs are globally unique and map incoming webhooks to their owning workspace. Conversations and templates are scoped to a WhatsApp account, so the same customer can have separate chats through different business numbers. Outbound messages, media, AI replies and campaigns use the conversation's encrypted account credentials. Owners/admins manage connections; direct client writes are revoked and encrypted credential columns are not client-readable.
 
 Takeover invalidates pending AI work through conversation versions and serialization. An HTTP request already dispatched to Meta cannot be recalled. Uncertain outbound outcomes are marked `unknown` rather than blindly retried, avoiding duplicate messages.
 
@@ -68,7 +68,7 @@ npm test
 npm run build
 ```
 
-26 automated tests passed across domain/demo behavior and PostgreSQL migration/RLS tests. Migration tests use PGlite with local stubs for Supabase-owned schemas, not a live Supabase project.
+Automated tests cover domain/demo behavior, phone OTP, multi-number routing, credential encryption and PostgreSQL migration/RLS rules. Migration tests use PGlite with local stubs for Supabase-owned schemas; the production migration is also verified separately against the dedicated Open Chet Supabase project.
 
 The catalogue workflow also passes two Playwright browser tests against the production build at desktop (1440px) and mobile (390px) sizes: horizontal rails, filters, details, multi-select sending, structured chat cards, persistence after reload, no page errors and no page-level horizontal overflow. Broader non-catalogue browser coverage and live integration checks remain outstanding. Passing these tests does not establish production readiness.
 
