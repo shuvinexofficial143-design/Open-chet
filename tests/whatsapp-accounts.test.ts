@@ -1,4 +1,5 @@
 import {afterEach,describe, expect, it, vi} from 'vitest';
+import {readFileSync} from 'node:fs';
 import {decryptAccessToken, encryptAccessToken} from '../lib/whatsapp-credentials';
 import {resolveWebhookAccount} from '../services/whatsapp-routing';
 import {sendWhatsApp,type WhatsAppAccount} from '../services/whatsapp.service';
@@ -57,5 +58,25 @@ describe('Multi-number routing',()=>{
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/100002/messages'),expect.objectContaining({headers:expect.objectContaining({Authorization:'Bearer token-for-b'})}));
     const request=fetch.mock.calls[0][1];
     expect(JSON.parse(String(request.body))).toMatchObject({to:'919999999999',type:'text'});
+  });
+});
+
+describe('WhatsApp connection API security',()=>{
+  const bootstrap=readFileSync(new URL('../app/api/bootstrap/route.ts',import.meta.url),'utf8');
+  const accountsApi=readFileSync(new URL('../app/api/whatsapp-accounts/route.ts',import.meta.url),'utf8');
+
+  it('never selects encrypted token material for the bootstrap response',()=>{
+    expect(bootstrap).toContain('select id,label,display_phone_number,verified_name,phone_number_id,business_account_id,is_active,is_default');
+    expect(bootstrap).not.toContain('access_token_ciphertext');
+    expect(bootstrap).not.toContain('access_token_iv');
+    expect(bootstrap).not.toContain('access_token_tag');
+  });
+
+  it('requires owner or admin access to manage connections',()=>{
+    expect(accountsApi).toContain("if(!canAdmin(c.role))throw new HttpError(403");
+  });
+
+  it('automatically makes the first active connection the default',()=>{
+    expect(accountsApi).toContain('${Number(count.count)===0}');
   });
 });
