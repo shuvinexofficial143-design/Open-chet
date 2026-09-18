@@ -50,6 +50,7 @@ export default function Workspace() {
   const [catalogueContext, setCatalogueContext] = useState<'chat' | 'manage' | null>(null);
   const [toast, setToast] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
   const [attachment, setAttachment] = useState<Row | null>(null);
   const [importRows, setImportRows] = useState<Row[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -187,12 +188,65 @@ export default function Workspace() {
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
-    if ((!draft.trim() && !attachment) || !selected) return;
-    const next = await act({
-      type: 'send', id: selected,
-      values: {body: draft.trim() || attachment?.name, kind: attachment?.kind || 'text', media_id: attachment?.media_id, media_url: attachment?.media_url, idempotency_key: crypto.randomUUID()},
-    });
-    if (next) {setDraft(''); setAttachment(null);}
+    if ((!draft.trim() && !attachment) || !selected || sending) return;
+
+    const conversationId = selected;
+    const outgoingBody = draft.trim() || attachment?.name || '';
+    const outgoingKind = attachment?.kind || 'text';
+    const outgoingAttachment = attachment;
+    const idempotencyKey = crypto.randomUUID();
+    const optimisticId = `optimistic-${idempotencyKey}`;
+    const createdAt = new Date().toISOString();
+
+    setDraft('');
+    setAttachment(null);
+    setSending(true);
+
+    setData((current) => current ? {
+      ...current,
+      messages: [...current.messages, {
+        id: optimisticId,
+        conversation_id: conversationId,
+        direction: 'out',
+        kind: outgoingKind,
+        body: outgoingBody,
+        status: 'sending',
+        created_at: createdAt,
+        sender_name: 'You',
+        media_id: outgoingAttachment?.media_id,
+        media_url: outgoingAttachment?.media_url,
+      }],
+      conversations: current.conversations.map((item) => item.id === conversationId ? {...item, preview: outgoingBody, updated_at: createdAt} : item),
+    } : current);
+
+    try {
+      await api('/api/action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          type: 'send',
+          id: conversationId,
+          values: {
+            body: outgoingBody,
+            kind: outgoingKind,
+            media_id: outgoingAttachment?.media_id,
+            media_url: outgoingAttachment?.media_url,
+            idempotency_key: idempotencyKey,
+          },
+        }),
+      });
+      await reload();
+    } catch (error) {
+      setData((current) => current ? {
+        ...current,
+        messages: current.messages.map((message) => message.id === optimisticId ? {...message, status: 'failed'} : message),
+      } : current);
+      setDraft((current) => current || outgoingBody);
+      if (outgoingAttachment) setAttachment((current) => current || outgoingAttachment);
+      notify((error as Error).message);
+    } finally {
+      setSending(false);
+    }
   }
 
   async function upload(file: File) {
@@ -360,7 +414,7 @@ export default function Workspace() {
               <input aria-label="Message" placeholder={messagingWindowOpen ? 'Type a message…' : 'Choose an approved template'} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={!messagingWindowOpen}/>
               {!messagingWindowOpen ? <button type="button" className="icon-button" aria-label="Choose approved template" onClick={() => setDialog({type: 'send-template'})}><FileText size={20}/></button> : null}
               <button type="button" className="icon-button catalogue-icon" aria-label="Open catalogue" onClick={() => openCatalogue('chat')}><Package size={20}/></button>
-              <button className="send-button" aria-label="Send message" disabled={busy || (!draft.trim() && !attachment) || !messagingWindowOpen}><Send size={20}/></button>
+              <button className="send-button" aria-label="Send message" disabled={busy || sending || (!draft.trim() && !attachment) || !messagingWindowOpen}><Send size={20}/></button>
             </form>
           </div>
         </section> : <section className="empty inbox-empty"><MessageSquare size={42}/><h2>Select a chat</h2><p>Choose a conversation to view messages.</p></section>}
