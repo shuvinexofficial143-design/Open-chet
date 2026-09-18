@@ -16,7 +16,8 @@ export async function POST(req:Request){try{
     const input=z.object({label,phone_number_id:identifier,business_account_id:identifier,access_token:z.string().trim().min(20).max(10000)}).parse(value);
     let metadata:{display_phone_number:string;verified_name:string};
     try{metadata=await verifyWhatsAppConnection(input.access_token,input.phone_number_id,input.business_account_id)}catch{throw new HttpError(400,'Meta could not verify this Phone Number ID, WABA, and access token combination')}
-    const encrypted=encryptAccessToken(input.access_token);
+    let encrypted;
+    try{encrypted=encryptAccessToken(input.access_token)}catch{throw new HttpError(503,'WhatsApp token encryption is not configured correctly. Check WHATSAPP_TOKEN_ENCRYPTION_KEY and redeploy.')}
     await db().begin(async sql=>{
       await sql`select pg_advisory_xact_lock(hashtext(${c.org}))`;
       const [count]=await sql`select count(*)::int count from whatsapp_accounts where organization_id=${c.org} and is_active=true`;
@@ -34,7 +35,7 @@ export async function POST(req:Request){try{
   }
   if(value.action==='active'){
     const accountId=id.parse(value.id),active=z.boolean().parse(value.is_active);
-    await db().begin(async sql=>{await sql`select pg_advisory_xact_lock(hashtext(${c.org}))`;const [account]=await sql`update whatsapp_accounts set is_active=${active},is_default=case when ${active}=false then false else is_default end,updated_at=now() where id=${accountId} and organization_id=${c.org} returning id`;if(!account)throw new HttpError(404,'WhatsApp connection not found');const [current]=await sql`select id from whatsapp_accounts where organization_id=${c.org} and is_active=true and is_default=true`;if(!current){const [fallback]=await sql`select id from whatsapp_accounts where organization_id=${c.org} and is_active=true order by created_at limit 1`;if(fallback)await sql`update whatsapp_accounts set is_default=true,updated_at=now() where id=${fallback.id}`;}});
+    await db().begin(async sql=>{await sql`select pg_advisory_xact_lock(hashtext(${c.org}))`;const [account]=await sql`update whatsapp_accounts set is_active=${active},is_default=case when ${active}=false then false else is_default end,updated_at=now() where id=${accountId} and organization_id=${c.org} returning id`;if(!account)throw new HttpError(404,'WhatsApp connection not found');const [current]=await sql`select id from whatsapp_accounts where organization_id=${c.org} and is_active=true and is_default=true`;if(!current){const [fallback]=await sql`select id from whatsapp_accounts where organization_id=${c.org} and is_active=true order by created_at limit 1`;if(fallback)await sql`update whatsapp_accounts set is_default=true,updated_at=now() where id=${fallback.id}`;}});  
   }
   return Response.json({ok:true});
 }catch(error){return failure(error)}}
