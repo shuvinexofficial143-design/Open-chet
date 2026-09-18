@@ -22,11 +22,17 @@ describe('WhatsApp credential encryption', () => {
     expect(first.access_token_ciphertext).not.toBe(second.access_token_ciphertext);
   });
 
-  it('rejects tampered ciphertext and invalid key sizes', () => {
+  it('accepts a long deployment secret by deriving a stable 32-byte AES key', () => {
+    const deploymentSecret = 'this-is-a-long-vercel-secret-value-1234567890';
+    const encrypted = encryptAccessToken('EA-test-token', deploymentSecret);
+    expect(decryptAccessToken(encrypted, deploymentSecret)).toBe('EA-test-token');
+  });
+
+  it('rejects tampered ciphertext and weak short keys', () => {
     const encrypted = encryptAccessToken('EA-test-token', key);
     const tampered = {...encrypted, access_token_ciphertext: Buffer.from('tampered').toString('base64')};
     expect(() => decryptAccessToken(tampered, key)).toThrow();
-    expect(() => encryptAccessToken('token', 'too-short')).toThrow('32 bytes');
+    expect(() => encryptAccessToken('token', 'too-short')).toThrow('at least 32 characters');
   });
 });
 
