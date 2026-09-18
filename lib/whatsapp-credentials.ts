@@ -1,4 +1,4 @@
-import {createCipheriv, createDecipheriv, randomBytes} from 'node:crypto';
+import {createCipheriv, createDecipheriv, createHash, randomBytes} from 'node:crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 
@@ -9,10 +9,19 @@ export type EncryptedAccessToken = {
 };
 
 function tokenKey(raw = process.env.WHATSAPP_TOKEN_ENCRYPTION_KEY) {
-  if (!raw) throw new Error('WhatsApp token encryption is not configured');
-  const key = /^[0-9a-f]{64}$/i.test(raw) ? Buffer.from(raw, 'hex') : Buffer.from(raw, 'base64');
-  if (key.length !== 32) throw new Error('WhatsApp token encryption key must contain exactly 32 bytes');
-  return key;
+  const value = raw?.trim();
+  if (!value) throw new Error('WhatsApp token encryption is not configured');
+
+  if (/^[0-9a-f]{64}$/i.test(value)) return Buffer.from(value, 'hex');
+
+  const decoded = Buffer.from(value, 'base64');
+  if (decoded.length === 32 && decoded.toString('base64').replace(/=+$/,'') === value.replace(/=+$/,'')) {
+    return decoded;
+  }
+
+  if (value.length < 32) throw new Error('WhatsApp token encryption key must be at least 32 characters');
+
+  return createHash('sha256').update(value, 'utf8').digest();
 }
 
 export function encryptAccessToken(accessToken: string, rawKey?: string): EncryptedAccessToken {
