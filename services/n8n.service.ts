@@ -1,3 +1,6 @@
+import {timingSafeEqual} from 'node:crypto';
+import {db} from '@/lib/server';
+
 type N8nInboundPayload = {
   organization_id: string;
   whatsapp_account_id: string;
@@ -14,23 +17,50 @@ type N8nInboundPayload = {
   raw_message: unknown;
 };
 
-export function n8nConfigured() {
-  return Boolean(process.env.N8N_INBOUND_WEBHOOK_URL && process.env.N8N_BRIDGE_SECRET);
+export type N8nBridgeConfig = {
+  url: string;
+  secret: string;
+};
+
+function secretsEqual(a:string,b:string){
+  const aa=Buffer.from(a);
+  const bb=Buffer.from(b);
+  return aa.length===bb.length&&timingSafeEqual(aa,bb);
 }
 
-export async function forwardInboundToN8n(payload:N8nInboundPayload) {
-  const url=process.env.N8N_INBOUND_WEBHOOK_URL;
-  const secret=process.env.N8N_BRIDGE_SECRET;
-  if(!url||!secret)return false;
+export async function getN8nBridgeConfig(organizationId:string):Promise<N8nBridgeConfig|null>{
+  const envUrl=process.env.N8N_INBOUND_WEBHOOK_URL;
+  const envSecret=process.env.N8N_BRIDGE_SECRET;
+  if(envUrl&&envSecret){
+    const parsed=new URL(envUrl);
+    if(parsed.protocol!=='https:')throw new Error('N8N_INBOUND_WEBHOOK_URL must use HTTPS');
+    return {url:parsed.toString(),secret:envSecret};
+  }
 
-  const parsed=new URL(url);
-  if(parsed.protocol!=='https:')throw new Error('N8N_INBOUND_WEBHOOK_URL must use HTTPS');
+  const [row]=await db()`select n8n_inbound_webhook_url,n8n_bridge_secret
+    from integration_bridges
+    where organization_id=${organizationId} and enabled=true
+    limit 1`;
+  if(!row)return null;
 
-  const response=await fetch(parsed,{
+  const parsed=new URL(String(row.n8n_inbound_webhook_url));
+  if(parsed.protocol!=='https:')throw new Error('Stored n8n webhook URL must use HTTPS');
+  return {url:parsed.toString(),secret:String(row.n8n_bridge_secret)};
+}
+
+export async function n8nConfigured(organizationId:string){
+  return Boolean(await getN8nBridgeConfig(organizationId));
+}
+
+export async function forwardInboundToN8n(payload:N8nInboundPayload,config?:N8nBridgeConfig|null) {
+  const bridge=config??await getN8nBridgeConfig(payload.organization_id);
+  if(!bridge)return false;
+
+  const response=await fetch(bridge.url,{
     method:'POST',
     headers:{
       'Content-Type':'application/json',
-      'Authorization':`Bearer ${secret}`,
+      'Authorization':`Bearer ${bridge.secret}`,
       'X-Open-Chet-Source':'whatsapp',
     },
     body:JSON.stringify(payload),
@@ -40,9 +70,20 @@ export async function forwardInboundToN8n(payload:N8nInboundPayload) {
   return true;
 }
 
-export function verifyN8nBridgeRequest(req:Request) {
-  const secret=process.env.N8N_BRIDGE_SECRET;
-  if(!secret)return false;
+export async function verifyN8nBridgeRequest(req:Request,organizationId:string) {
   const provided=req.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1];
-  return Boolean(provided&&provided===secret);
+  if(!provided)return false;
+  const bridge=await getN8nBridgeConfig(organizationId);
+  return Boolean(bridge&&secretsEqual(provided,bridge.secret));
+}
+
+export async function verifyWhatsAppWebhookToken(provided:string|null){
+  if(!provided)return false;
+  const envToken=process.env.WHATSAPP_VERIFY_TOKEN;
+  if(envToken&&secretsEqual(provided,envToken))return true;
+  const [row]=await db()`select 1
+    from integration_bridges
+    where enabled=true and whatsapp_verify_token=${provided}
+    limit 1`;
+  return Boolean(row);
 }
