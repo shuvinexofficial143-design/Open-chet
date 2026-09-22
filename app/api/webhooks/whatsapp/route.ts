@@ -189,7 +189,7 @@ export async function POST(req:Request){
                 message_type:kind,
                 text:String(content||''),
                 media_id:m[kind]?.id||null,
-                is_first_message:shouldSendWelcome,
+                should_send_welcome:shouldSendWelcome,
                 raw_message:m
               }
             :null;
