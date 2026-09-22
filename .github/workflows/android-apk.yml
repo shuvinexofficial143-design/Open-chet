@@ -27,19 +27,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Locate Android SDK manager
-        id: sdk
+      - name: Prepare Android SDK
         shell: bash
         run: |
           SDKMANAGER="$(find /usr/local/lib/android/sdk/cmdline-tools -type f -name sdkmanager | head -n 1)"
           test -n "$SDKMANAGER"
-          echo "sdkmanager=$SDKMANAGER" >> "$GITHUB_OUTPUT"
-
-      - name: Accept Android SDK licenses
-        run: yes | "${{ steps.sdk.outputs.sdkmanager }}" --licenses >/dev/null || true
-
-      - name: Install Android platform
-        run: "${{ steps.sdk.outputs.sdkmanager }}" "platforms;android-35" "build-tools;35.0.0"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
