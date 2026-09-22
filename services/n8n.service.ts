@@ -1,5 +1,6 @@
 import {timingSafeEqual} from 'node:crypto';
 import {db} from '@/lib/server';
+import {decryptAccessToken} from '@/lib/whatsapp-credentials';
 
 type N8nInboundPayload = {
   organization_id: string;
@@ -73,8 +74,26 @@ export async function forwardInboundToN8n(payload:N8nInboundPayload,config?:N8nB
 export async function verifyN8nBridgeRequest(req:Request,organizationId:string) {
   const provided=req.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1];
   if(!provided)return false;
+
   const bridge=await getN8nBridgeConfig(organizationId);
-  return Boolean(bridge&&secretsEqual(provided,bridge.secret));
+  if(bridge&&secretsEqual(provided,bridge.secret))return true;
+
+  const accounts=await db()`select
+      access_token_ciphertext,access_token_iv,access_token_tag
+    from whatsapp_accounts
+    where organization_id=${organizationId}
+      and is_active=true
+      and access_token_ciphertext is not null
+      and access_token_iv is not null
+      and access_token_tag is not null`;
+
+  for(const account of accounts){
+    try{
+      const token=decryptAccessToken(account as any);
+      if(secretsEqual(provided,token))return true;
+    }catch{}
+  }
+  return false;
 }
 
 export async function verifyWhatsAppWebhookToken(provided:string|null){
