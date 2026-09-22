@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'in.scmpharmacy.openchet'
+    namespace 'com.scmpharmacy.openchet'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'in.scmpharmacy.openchet'
+        applicationId 'com.scmpharmacy.openchet'
         minSdk 24
         targetSdk 35
         versionCode 1
