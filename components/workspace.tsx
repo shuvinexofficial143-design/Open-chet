@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import CataloguePanel, {ProductMessage} from './catalogue-panel';
 import Dialog from './dialog';
-import {catalogueDemoProducts} from '@/lib/catalogue';
+import {catalogueDemoProducts, productSnapshot} from '@/lib/catalogue';
 import {canAdmin, canManage, messagingOpen, normalizePhone, templateVariables} from '@/lib/domain';
 import {demoAction, demoData} from '@/lib/demo';
 import {api, browserDB, configured} from '@/lib/supabase';
@@ -398,7 +398,9 @@ export default function Workspace() {
                 {message.kind === 'audio' && message.media_url?.startsWith('blob:') ? <audio controls src={message.media_url}/> : null}
                 {['image', 'document', 'video', 'audio'].includes(message.kind) && !message.media_url ? <button className="attachment-link" onClick={() => downloadMedia(message)}><Download size={18}/>Open {message.kind}</button> : null}
                 {message.kind === 'template' ? <span className="template-label"><FileText size={12}/>Template message</span> : null}
-                {message.kind === 'product' && message.product_snapshot ? <ProductMessage product={message.product_snapshot}/> : <p>{message.body}</p>}
+                {message.kind === 'catalogue' && Array.isArray(message.payload?.products) && message.payload.products.length
+                  ? <div className="catalogue-message"><p>{message.body || '🛍️ Product catalogue'}</p><div className="catalogue-message-grid">{message.payload.products.map((product: Row) => <ProductMessage key={String(product.id)} product={productSnapshot(product)}/>)}</div></div>
+                  : message.kind === 'product' && message.product_snapshot ? <ProductMessage product={message.product_snapshot}/> : <p>{message.body}</p>}
                 <div className="message-meta"><time>{time(message.created_at)}</time>{message.direction === 'out' ? message.status === 'read' ? <CheckCheck size={15} className="read"/> : message.status === 'delivered' ? <CheckCheck size={15}/> : message.status === 'sent' ? <Check size={15}/> : message.status === 'demo' ? <span>Demo</span> : <span>{message.status}</span> : null}</div>
               </div></div>
             </div>)}<div ref={messageEnd}/>
