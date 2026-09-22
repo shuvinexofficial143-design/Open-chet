@@ -129,6 +129,24 @@ export default function Workspace() {
   }, [data?.organization_id, demo]);
   useEffect(() => {messageEnd.current?.scrollIntoView({behavior: 'smooth'});}, [selected, data?.messages.length]);
 
+  useEffect(() => {
+    const w = window as any;
+    w.openChetNativeBack = () => {
+      if (dialog) { setDialog(null); return true; }
+      if (catalogueContext) { setCatalogueContext(null); return true; }
+      if (contactInfoId) { setContactInfoId(''); return true; }
+      if (showNotifications) { setShowNotifications(false); return true; }
+      if (showChatMenu) { setShowChatMenu(false); return true; }
+      if (showSearch) { setShowSearch(false); setChatSearch(''); return true; }
+      if (mobileChat) { setMobileChat(false); return true; }
+      if (page === 'Tools' && toolView !== 'home') { setToolView('home'); return true; }
+      if (page === 'More' && moreView !== 'home') { setMoreView('home'); return true; }
+      if (page !== 'Chats') { setPage('Chats'); setQuery(''); return true; }
+      return false;
+    };
+    return () => { delete w.openChetNativeBack; };
+  }, [dialog, catalogueContext, contactInfoId, showNotifications, showChatMenu, showSearch, mobileChat, page, toolView, moreView]);
+
   async function act(action: Action, success?: string) {
     setBusy(true);
     try {
