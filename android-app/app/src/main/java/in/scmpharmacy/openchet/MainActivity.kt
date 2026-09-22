@@ -112,10 +112,18 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
+        webView.evaluateJavascript(
+            "(function(){try{return window.openChetNativeBack ? window.openChetNativeBack() : false;}catch(e){return false;}})();"
+        ) { handled ->
+            if (handled == "true") {
+                return@evaluateJavascript
+            }
+
+            if (webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                super.onBackPressed()
+            }
         }
     }
 
