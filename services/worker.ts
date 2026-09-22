@@ -21,3 +21,98 @@ try{const {expected_version:_version,...payload}=m.payload;void _version;const a
 await sql`update messages set status='unknown' where status='sending' and updated_at<now()-interval '5 minutes'`;
 await sql`update campaigns c set status='completed' where status='running' and not exists(select 1 from campaign_recipients r where r.campaign_id=c.id and r.status in('queued','sending'))`;
 return {processed};}
+
+
+export async function runOutboundMessage(messageId:string){
+  const sql=db();
+  let processed=0;
+  const [p]=await sql`select id,conversation_id,organization_id
+    from messages
+    where id=${messageId} and status='queued' and direction='out'
+    limit 1`;
+  if(!p)return {processed};
+
+  await sql.begin(async tx=>{
+    await tx`select pg_advisory_xact_lock(hashtext(${p.conversation_id}))`;
+    const [m]=await tx`select * from messages where id=${p.id}`;
+    if(!m||m.status!=='queued')return;
+
+    const [c]=await tx`select c.*,ct.phone,ct.opted_in,
+        wa.id wa_id,wa.phone_number_id wa_phone_number_id,
+        wa.business_account_id wa_business_account_id,
+        wa.access_token_ciphertext wa_access_token_ciphertext,
+        wa.access_token_iv wa_access_token_iv,
+        wa.access_token_tag wa_access_token_tag,
+        wa.is_active wa_is_active
+      from conversations c
+      join contacts ct on ct.id=c.contact_id and ct.organization_id=c.organization_id
+      left join whatsapp_accounts wa on wa.id=c.whatsapp_account_id and wa.organization_id=c.organization_id
+      where c.id=${m.conversation_id} and c.organization_id=${m.organization_id}`;
+
+    const [org]=await tx`select settings from organizations where id=${m.organization_id}`;
+    let cancelled=!c?.wa_id||!c.wa_is_active||!c.wa_access_token_ciphertext;
+
+    if(m.sender_name==='Open Chet AI')
+      cancelled ||=!maySendAI(c.mode,org.settings.ai_enabled,m.payload.expected_version,c.version,c.last_inbound_at?.toISOString());
+
+    if(m.kind!=='template')
+      cancelled ||=!messagingOpen(c.last_inbound_at?.toISOString());
+    else{
+      const [t]=await tx`select status from templates
+        where organization_id=${m.organization_id}
+          and name=${m.payload.template.name}
+          and language=${m.payload.template.language.code}
+          and (whatsapp_account_id=${c.wa_id} or whatsapp_account_id is null)`;
+      cancelled ||=t?.status!=='APPROVED';
+    }
+
+    if(m.sender_name==='Campaign')cancelled ||=!c.opted_in;
+
+    if(cancelled){
+      await tx`update messages set status='cancelled' where id=${m.id}`;
+      await tx`update campaign_recipients set status='cancelled' where message_id=${m.id}`;
+      return;
+    }
+
+    await tx`update messages set status='sending',updated_at=now()
+      where id=${m.id} and status='queued'`;
+
+    try{
+      const {expected_version:_version,...payload}=m.payload;
+      void _version;
+      const account:WhatsAppAccount={
+        id:c.wa_id,
+        organization_id:m.organization_id,
+        phone_number_id:c.wa_phone_number_id,
+        business_account_id:c.wa_business_account_id,
+        access_token_ciphertext:c.wa_access_token_ciphertext,
+        access_token_iv:c.wa_access_token_iv,
+        access_token_tag:c.wa_access_token_tag,
+        is_active:c.wa_is_active,
+      };
+      const result=await sendWhatsApp(account,c.phone,payload);
+      const metaId=result.messages?.[0]?.id;
+      if(!metaId)throw Error('Missing Meta acknowledgement');
+
+      const events=await tx`select status from message_status_events
+        where organization_id=${m.organization_id}
+          and meta_message_id=${metaId}
+        order by event_at`;
+      const status=events.reduce((s,e)=>statusAdvance(s,e.status),'sent');
+
+      await tx`update messages
+        set status=${status},meta_message_id=${metaId},updated_at=now()
+        where id=${m.id}`;
+      await tx`update campaign_recipients set status=${status} where message_id=${m.id}`;
+      await tx`update conversations set preview=${m.body},updated_at=now() where id=${c.id}`;
+      processed++;
+    }catch{
+      await tx`update messages set status='unknown',updated_at=now() where id=${m.id}`;
+      await tx`update campaign_recipients set status='unknown' where message_id=${m.id}`;
+      await tx`insert into notifications(organization_id,conversation_id,body)
+        values(${m.organization_id},${c.id},'Message delivery is uncertain. Check Meta before sending again.')`;
+    }
+  });
+
+  return {processed};
+}
