@@ -15,7 +15,7 @@ type N8nInboundPayload = {
   message_type: string;
   text: string;
   media_id?: string | null;
-  is_first_message?: boolean;
+  should_send_welcome?: boolean;
   raw_message: unknown;
 };
 
@@ -82,7 +82,7 @@ export async function forwardInboundToN8n(payload:N8nInboundPayload,config?:N8nB
       conversation_id:payload.conversation_id,
       contact_id:payload.contact_id,
       message_id:payload.message_id,
-      is_first_message:Boolean(payload.is_first_message),
+      should_send_welcome:Boolean(payload.should_send_welcome),
     },
   };
 
