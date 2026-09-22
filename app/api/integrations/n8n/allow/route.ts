@@ -5,7 +5,7 @@ import {verifyN8nBridgeRequest} from '@/services/n8n.service';
 
 const input=z.object({
   phone_number_id:z.string().trim().regex(/^\d{5,30}$/),
-  customer_phone:z.string().transform(normalizePhone),
+  customer_phone:z.string().transform((value)=>normalizePhone(value.startsWith('+')?value:`+${value}`)),
 });
 
 export async function POST(req:Request){
