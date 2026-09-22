@@ -7,7 +7,23 @@ const input=z.object({
   phone_number_id:z.string().trim().regex(/^\d{5,30}$/),
   customer_phone:z.string().transform((value)=>normalizePhone(value.startsWith('+')?value:`+${value}`)),
   body:z.string().default(''),
-  kind:z.enum(['text','audio','image','document','video','template','product']).default('text'),
+  kind:z.enum(['text','audio','image','document','video','template','product','catalogue']).default('text'),
+  page:z.number().int().min(1).optional(),
+  products:z.array(z.object({
+    id:z.union([z.string(),z.number()]),
+    name:z.string(),
+    category:z.string().optional(),
+    image_url:z.string().optional(),
+    description:z.string().optional(),
+    brand:z.string().optional(),
+    composition:z.string().optional(),
+    strength:z.string().optional(),
+    form_type:z.string().optional(),
+    pack_size:z.string().optional(),
+    availability:z.string().optional(),
+    price:z.union([z.number(),z.string(),z.null()]).optional(),
+    currency:z.string().optional(),
+  }).passthrough()).max(8).optional(),
   meta_message_id:z.string().trim().min(1).max(500).optional(),
   media_id:z.string().trim().max(500).optional(),
 });
@@ -49,7 +65,7 @@ export async function POST(req:Request){
         ) values(
           ${account.organization_id},${conversation.id},'out',${value.kind},${value.body},
           'sent','n8n AI',${value.meta_message_id||null},${value.media_id||null},
-          ${tx.json({source:'n8n'})}
+          ${tx.json({source:'n8n',page:value.page||null,products:value.products||[]})}
         )`;
 
       await tx`update conversations
