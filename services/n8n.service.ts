@@ -57,14 +57,41 @@ export async function forwardInboundToN8n(payload:N8nInboundPayload,config?:N8nB
   const bridge=config??await getN8nBridgeConfig(payload.organization_id);
   if(!bridge)return false;
 
+  let authSecret=bridge.secret;
+  try{
+    const [account]=await db()`select
+        access_token_ciphertext,access_token_iv,access_token_tag
+      from whatsapp_accounts
+      where id=${payload.whatsapp_account_id}
+        and organization_id=${payload.organization_id}
+        and is_active=true
+      limit 1`;
+    if(account)authSecret=decryptAccessToken(account as any);
+  }catch{}
+
+  const waId=payload.customer_phone.replace(/^\+/,'');
+  const compatiblePayload={
+    messaging_product:'whatsapp',
+    metadata:{phone_number_id:payload.phone_number_id},
+    contacts:[{profile:{name:payload.customer_name},wa_id:waId}],
+    messages:[payload.raw_message],
+    open_chet:{
+      organization_id:payload.organization_id,
+      whatsapp_account_id:payload.whatsapp_account_id,
+      conversation_id:payload.conversation_id,
+      contact_id:payload.contact_id,
+      message_id:payload.message_id,
+    },
+  };
+
   const response=await fetch(bridge.url,{
     method:'POST',
     headers:{
       'Content-Type':'application/json',
-      'Authorization':`Bearer ${bridge.secret}`,
+      'Authorization':`Bearer ${authSecret}`,
       'X-Open-Chet-Source':'whatsapp',
     },
-    body:JSON.stringify(payload),
+    body:JSON.stringify(compatiblePayload),
     signal:AbortSignal.timeout(8000),
   });
   if(!response.ok)throw new Error(`n8n bridge returned HTTP ${response.status}`);
