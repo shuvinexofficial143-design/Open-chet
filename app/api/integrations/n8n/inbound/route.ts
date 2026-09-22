@@ -23,12 +23,23 @@ export async function POST(req:Request){
     const payload:any=await req.json();
     const phoneNumberId=String(payload?.metadata?.phone_number_id||payload?.phone_number_id||'');
 
-    const account=await resolveWebhookAccount(phoneNumberId,async id=>{
-      const [row]=await db()`select id,organization_id,phone_number_id,business_account_id,is_active
+    let account=phoneNumberId
+      ?await resolveWebhookAccount(phoneNumberId,async id=>{
+          const [row]=await db()`select id,organization_id,phone_number_id,business_account_id,is_active
+            from whatsapp_accounts
+            where phone_number_id=${id}`;
+          return row?row as RoutedWhatsAppAccount:null;
+        })
+      :null;
+
+    if(!account){
+      const rows=await db()`select id,organization_id,phone_number_id,business_account_id,is_active
         from whatsapp_accounts
-        where phone_number_id=${id}`;
-      return row?row as RoutedWhatsAppAccount:null;
-    });
+        where is_active=true
+        order by is_default desc,created_at
+        limit 2`;
+      if(rows.length===1)account=rows[0] as RoutedWhatsAppAccount;
+    }
 
     if(!account)throw new HttpError(404,'WhatsApp connection not found');
     if(!await verifyN8nBridgeRequest(req,account.organization_id))throw new HttpError(401,'Invalid n8n bridge credentials');
