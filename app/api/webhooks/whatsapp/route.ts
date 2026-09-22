@@ -197,7 +197,13 @@ export async function POST(req:Request){
 
         if(bridgeEvent&&bridge){
           try{
-            await forwardInboundToN8n(bridgeEvent,bridge);
+            const delivered=await forwardInboundToN8n(bridgeEvent,bridge);
+            if(delivered&&bridgeEvent.should_send_welcome){
+              await db()`update conversations
+                set welcome_sent=true,updated_at=now()
+                where id=${bridgeEvent.conversation_id}
+                  and organization_id=${bridgeEvent.organization_id}`;
+            }
           }catch(error){
             console.warn('n8n bridge delivery failed',error instanceof Error?error.message:'unknown');
           }
