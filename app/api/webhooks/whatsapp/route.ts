@@ -78,13 +78,12 @@ export async function POST(req:Request){
 
           await sql`select pg_advisory_xact_lock(hashtext(${conv.id}))`;
 
-          const previousInbound=await sql`select 1
-            from messages
-            where organization_id=${org}
-              and conversation_id=${conv.id}
-              and direction='in'
-            limit 1`;
-          const isFirstMessage=previousInbound.length===0;
+          const shouldSendWelcome=!Boolean(conv.welcome_sent);
+          if(shouldSendWelcome){
+            await sql`update conversations
+              set welcome_sent=true
+              where id=${conv.id} and organization_id=${org}`;
+          }
 
           const timestamp=new Date(Number(m.timestamp)*1000);
           const kind=m.type||'unsupported';
@@ -190,7 +189,7 @@ export async function POST(req:Request){
                 message_type:kind,
                 text:String(content||''),
                 media_id:m[kind]?.id||null,
-                is_first_message:isFirstMessage,
+                is_first_message:shouldSendWelcome,
                 raw_message:m
               }
             :null;
