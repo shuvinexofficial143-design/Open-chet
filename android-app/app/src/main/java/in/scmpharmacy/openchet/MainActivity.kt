@@ -1,7 +1,8 @@
-package in.scmpharmacy.openchet
+package com.scmpharmacy.openchet
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.CookieManager
@@ -46,7 +47,7 @@ class MainActivity : AppCompatActivity() {
             userAgentString = "$userAgentString OpenChetAndroid/1.0"
         }
 
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+        WebView.setWebContentsDebuggingEnabled((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0)
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
