@@ -11,7 +11,7 @@ const label=z.string().trim().min(1).max(120);
 export async function POST(req:Request){try{
   const c=await context(req);
   if(!canAdmin(c.role))throw new HttpError(403,'Owner or admin access required');
-  const value=z.object({action:z.enum(['add','label','default','active']),id:id.optional(),label:label.optional(),phone_number_id:identifier.optional(),business_account_id:identifier.optional(),access_token:z.string().trim().min(20).max(10000).optional(),is_active:z.boolean().optional()}).parse(await body(req));
+  const value=z.object({action:z.enum(['add','label','default','active']),id:id.optional(),label:label.optional(),phone_number_id:identifier.optional(),business_account_id:identifier.optional(),access_token:z.string().trim().min(20).max(10000).optional(),is_active:z.boolean().optional(),make_default:z.boolean().optional()}).parse(await body(req));
   if(value.action==='add'){
     const input=z.object({label,phone_number_id:identifier,business_account_id:identifier,access_token:z.string().trim().min(20).max(10000)}).parse(value);
     let metadata:{display_phone_number:string;verified_name:string};
@@ -21,7 +21,9 @@ export async function POST(req:Request){try{
     await db().begin(async sql=>{
       await sql`select pg_advisory_xact_lock(hashtext(${c.org}))`;
       const [count]=await sql`select count(*)::int count from whatsapp_accounts where organization_id=${c.org} and is_active=true`;
-      await sql`insert into whatsapp_accounts(organization_id,label,phone_number_id,business_account_id,display_phone_number,verified_name,access_token_ciphertext,access_token_iv,access_token_tag,is_active,is_default) values(${c.org},${input.label},${input.phone_number_id},${input.business_account_id},${metadata.display_phone_number},${metadata.verified_name},${encrypted.access_token_ciphertext},${encrypted.access_token_iv},${encrypted.access_token_tag},true,${Number(count.count)===0})`;
+      const makeDefault=Boolean(value.make_default)||Number(count.count)===0;
+      if(makeDefault)await sql`update whatsapp_accounts set is_default=false,updated_at=now() where organization_id=${c.org} and is_default=true`;
+      await sql`insert into whatsapp_accounts(organization_id,label,phone_number_id,business_account_id,display_phone_number,verified_name,access_token_ciphertext,access_token_iv,access_token_tag,is_active,is_default) values(${c.org},${input.label},${input.phone_number_id},${input.business_account_id},${metadata.display_phone_number},${metadata.verified_name},${encrypted.access_token_ciphertext},${encrypted.access_token_iv},${encrypted.access_token_tag},true,${makeDefault})`;
     });
   }
   if(value.action==='label'){
