@@ -18,7 +18,12 @@ export async function GET(req:Request){
 export async function POST(req:Request){
   const raw=await req.text();
   if(raw.length>2_000_000)return new Response('Too large',{status:413});
-  if(!verifySignature(raw,req.headers.get('x-hub-signature-256'),process.env.META_APP_SECRET||''))return new Response('Invalid signature',{status:401});
+  const metaSecrets=[
+    process.env.META_APP_SECRET,
+    process.env.META_APP_SECRET_SECONDARY,
+  ].filter((secret):secret is string=>Boolean(secret));
+  const signature=req.headers.get('x-hub-signature-256');
+  if(!metaSecrets.some(secret=>verifySignature(raw,signature,secret)))return new Response('Invalid signature',{status:401});
 
   try{
     const payload=JSON.parse(raw);
