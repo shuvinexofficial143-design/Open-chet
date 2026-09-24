@@ -8,14 +8,17 @@ import {
   normalizePhoneForOtp,
   OTP_RESEND_SECONDS,
   requestPhoneOtp,
+  requestVoiceOtp,
   resendPhoneOtp,
   signOutPhoneSession,
   validateOtp,
   verifyPhoneOtp,
+  verifyVoiceOtp,
 } from '../lib/phone-auth';
 
 const loginSource = readFileSync(new URL('../app/login/page.tsx', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(new URL('../components/workspace.tsx', import.meta.url), 'utf8');
+const voiceRouteSource = readFileSync(new URL('../app/api/auth/voice-otp/route.ts', import.meta.url), 'utf8');
 
 function clientWith(auth: Record<string, unknown>) {
   return {auth} as unknown as SupabaseClient;
@@ -63,6 +66,33 @@ describe('Phone OTP authentication', () => {
     expect(() => validateOtp('12345')).toThrow('6-digit');
     await verifyPhoneOtp(clientWith({verifyOtp}), '+919329354729', '123456');
     expect(verifyOtp).toHaveBeenCalledWith({phone: '+919329354729', token: '123456', type: 'sms'});
+  });
+
+  it('offers a voice-call OTP fallback', async () => {
+    expect(loginSource).toContain('Call me with OTP');
+    expect(voiceRouteSource).toContain("Channel: 'call'");
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ok: true}),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await requestVoiceOtp('+919329354729');
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/voice-otp', expect.objectContaining({method: 'POST'}));
+    vi.unstubAllGlobals();
+  });
+
+  it('accepts a verified voice OTP session', async () => {
+    const setSession = vi.fn().mockResolvedValue({data: {session: {access_token: 'voice'}}, error: null});
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({access_token: 'access', refresh_token: 'refresh'}),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const session = await verifyVoiceOtp(clientWith({setSession}), '+919329354729', '123456');
+    expect(session).toMatchObject({access_token: 'voice'});
+    expect(setSession).toHaveBeenCalledWith({access_token: 'access', refresh_token: 'refresh'});
+    vi.unstubAllGlobals();
   });
 
   it('resends through Supabase after a cooldown', async () => {

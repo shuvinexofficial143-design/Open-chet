@@ -71,6 +71,33 @@ export async function verifyPhoneOtp(client: SupabaseClient, phone: string, toke
   return result.data.session;
 }
 
+async function voiceOtpApi(payload: Record<string, string>) {
+  const response = await fetch('/api/auth/voice-otp', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Voice verification failed. Please try again.');
+  return data;
+}
+
+export async function requestVoiceOtp(phone: string) {
+  return voiceOtpApi({action: 'start', phone});
+}
+
+export async function verifyVoiceOtp(client: SupabaseClient, phone: string, token: string) {
+  const data = await voiceOtpApi({action: 'verify', phone, token});
+  if (!data.access_token || !data.refresh_token) throw new Error('Voice verification did not create a session.');
+  const result = await client.auth.setSession({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+  });
+  if (result.error) throw result.error;
+  if (!result.data.session) throw new Error('Voice verification did not create a session.');
+  return result.data.session;
+}
+
 export async function resendPhoneOtp(client: SupabaseClient, phone: string) {
   const result = await client.auth.resend({phone, type: 'sms'});
   if (result.error) throw result.error;

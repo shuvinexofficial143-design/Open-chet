@@ -12,9 +12,11 @@ import {
   normalizePhoneForOtp,
   OTP_RESEND_SECONDS,
   requestPhoneOtp,
+  requestVoiceOtp,
   resendPhoneOtp,
   validateOtp,
   verifyPhoneOtp,
+  verifyVoiceOtp,
 } from '@/lib/phone-auth';
 import {api, browserDB, configured} from '@/lib/supabase';
 
@@ -28,6 +30,8 @@ export default function Login() {
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [cooldown, setCooldown] = useState(0);
+  const [callCooldown, setCallCooldown] = useState(0);
+  const [otpMethod, setOtpMethod] = useState<'sms' | 'call'>('sms');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(configured);
   const [message, setMessage] = useState('');
@@ -62,6 +66,12 @@ export default function Login() {
     return () => window.clearInterval(timer);
   }, [cooldown]);
 
+  useEffect(() => {
+    if (callCooldown <= 0) return;
+    const timer = window.setInterval(() => setCallCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [callCooldown]);
+
   async function continueWithPhone(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage('');
@@ -70,6 +80,7 @@ export default function Login() {
       setBusy(true);
       await requestPhoneOtp(browserDB(), normalized);
       setPhone(normalized);
+      setOtpMethod('sms');
       setOtp('');
       setCooldown(OTP_RESEND_SECONDS);
       setStep('otp');
@@ -86,7 +97,8 @@ export default function Login() {
     try {
       const token = validateOtp(otp);
       setBusy(true);
-      await verifyPhoneOtp(browserDB(), phone, token);
+      if (otpMethod === 'call') await verifyVoiceOtp(browserDB(), phone, token);
+      else await verifyPhoneOtp(browserDB(), phone, token);
       try {
         await api('/api/bootstrap');
         router.replace('/');
@@ -101,14 +113,33 @@ export default function Login() {
     }
   }
 
+  async function requestCallCode() {
+    if (busy || callCooldown > 0 || !phone) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      await requestVoiceOtp(phone);
+      setOtpMethod('call');
+      setOtp('');
+      setCallCooldown(OTP_RESEND_SECONDS);
+      setMessage('Calling you now with a 6-digit verification code.');
+    } catch (error) {
+      setMessage(authErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function resendCode() {
     if (busy || cooldown > 0) return;
     setBusy(true);
     setMessage('');
     try {
       await resendPhoneOtp(browserDB(), phone);
+      setOtpMethod('sms');
+      setOtp('');
       setCooldown(OTP_RESEND_SECONDS);
-      setMessage('A new verification code has been sent.');
+      setMessage('A new SMS verification code has been sent.');
     } catch (error) {
       setMessage(authErrorMessage(error));
     } finally {
@@ -121,6 +152,8 @@ export default function Login() {
     setOtp('');
     setPhone('');
     setCooldown(0);
+    setCallCooldown(0);
+    setOtpMethod('sms');
     setMessage('');
   }
 
@@ -173,7 +206,8 @@ export default function Login() {
           <input className="otp-input" id="otp" name="otp" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" placeholder="••••••" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} required/>
           <button className="primary" disabled={busy || otp.length !== 6}>{busy ? 'Verifying…' : 'Verify'}<ArrowRight size={18}/></button>
           <div className="otp-actions">
-            <button type="button" className="link" disabled={busy || cooldown > 0} onClick={resendCode}>{cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}</button>
+            <button type="button" className="link" disabled={busy || cooldown > 0} onClick={resendCode}>{cooldown > 0 ? `Resend SMS in ${cooldown}s` : 'Resend SMS'}</button>
+            <button type="button" className="link" disabled={busy || callCooldown > 0} onClick={requestCallCode}>{callCooldown > 0 ? `Call again in ${callCooldown}s` : 'Call me with OTP'}</button>
             <button type="button" className="link" disabled={busy} onClick={changeNumber}>Change number</button>
           </div>
         </form>}
