@@ -35,12 +35,14 @@ async function inspectMeta(account:WhatsAppAccount,path:string){
 }
 
 export async function getWhatsAppHealth(account:WhatsAppAccount){
-  const [waba,phone,wabaPhones,subscribedApps,tokenApp]=await Promise.all([
+  const [waba,phone,wabaPhones,subscribedApps,tokenApp,tokenPermissions,phoneRegistration]=await Promise.all([
     inspectMeta(account,`${account.business_account_id}?fields=id,name,account_review_status,owner_business_info,health_status`),
     inspectMeta(account,`${account.phone_number_id}?fields=id,display_phone_number,verified_name,quality_rating`),
     inspectMeta(account,`${account.business_account_id}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating&limit=100`),
     inspectMeta(account,`${account.business_account_id}/subscribed_apps`),
     inspectMeta(account,'app?fields=id,name'),
+    inspectMeta(account,'me/permissions'),
+    inspectMeta(account,`${account.phone_number_id}?fields=id,code_verification_status,platform_type,throughput`),
   ]);
   return {
     checked_at:new Date().toISOString(),
@@ -52,6 +54,8 @@ export async function getWhatsAppHealth(account:WhatsAppAccount){
     waba_phone_numbers:wabaPhones,
     subscribed_apps:subscribedApps,
     token_app:tokenApp,
+    token_permissions:tokenPermissions,
+    phone_registration:phoneRegistration,
   };
 }
 
