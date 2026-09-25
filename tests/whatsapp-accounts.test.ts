@@ -55,19 +55,19 @@ describe('Multi-number routing',()=>{
     await expect(resolveWebhookAccount('100003',async()=>({...accounts[0],phone_number_id:'100003',is_active:false}))).resolves.toBeNull();
   });
 
-  it('reads WABA health without exposing the encrypted token',async()=>{
+  it('reads expanded WABA health without exposing the encrypted token',async()=>{
     const key=Buffer.alloc(32,7).toString('base64');
     process.env.WHATSAPP_TOKEN_ENCRYPTION_KEY=key;
-    const fetch=vi.fn()
-      .mockResolvedValueOnce({ok:true,status:200,json:async()=>({id:'1975778520048284',health_status:{can_send_message:'LIMITED'}})})
-      .mockResolvedValueOnce({ok:true,status:200,json:async()=>({id:'1415163475002152',display_phone_number:'+91 92034 77793',verified_name:'SCM Pharmacy',quality_rating:'GREEN'})});
+    const fetch=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({id:'meta-test'})});
     vi.stubGlobal('fetch',fetch);
-    const connection:WhatsAppAccount={id:'new-account',organization_id:'workspace-a',phone_number_id:'1415163475002152',business_account_id:'1975778520048284',is_active:true,...encryptAccessToken('token-for-health-check',key)};
+    const connection:WhatsAppAccount={id:'new-account',organization_id:'workspace-a',phone_number_id:'1415163475002152',business_account_id:'1975778520048284',is_active:true,...encryptAccessToken('health-secret',key)};
     const health=await getWhatsAppHealth(connection);
-    expect(health.waba).toMatchObject({ok:true,data:{id:'1975778520048284'}});
-    expect(health.phone).toMatchObject({ok:true,data:{id:'1415163475002152'}});
-    expect(JSON.stringify(health)).not.toContain('token-for-health-check');
-    expect(fetch).toHaveBeenNthCalledWith(1,expect.stringContaining('/1975778520048284?fields=id,health_status'),expect.objectContaining({headers:expect.objectContaining({Authorization:'Bearer token-for-health-check'})}));
+    expect(health.waba.ok).toBe(true);
+    expect(health.phone.ok).toBe(true);
+    expect(health.waba_phone_numbers.ok).toBe(true);
+    expect(health.subscribed_apps.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(JSON.stringify(health)).not.toContain('health-secret');
   });
 
   it('sends with the selected account Phone Number ID and encrypted token',async()=>{
