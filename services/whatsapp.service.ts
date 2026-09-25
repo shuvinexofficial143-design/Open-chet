@@ -22,6 +22,33 @@ export async function meta(account:WhatsAppAccount,path:string,init:RequestInit=
   return metaWithToken(decryptAccessToken(account),path,init);
 }
 
+async function inspectMeta(account:WhatsAppAccount,path:string){
+  const response=await fetch(`${graphRoot()}/${path}`,{headers:{Authorization:`Bearer ${decryptAccessToken(account)}`},signal:AbortSignal.timeout(15000)});
+  const payload=await response.json().catch(()=>({}));
+  if(response.ok)return {ok:true,status:response.status,data:payload};
+  return {ok:false,status:response.status,error:{
+    code:payload.error?.code??null,
+    subcode:payload.error?.error_subcode??null,
+    type:payload.error?.type??null,
+    message:String(payload.error?.message||'Meta request failed').slice(0,500),
+  }};
+}
+
+export async function getWhatsAppHealth(account:WhatsAppAccount){
+  const [waba,phone]=await Promise.all([
+    inspectMeta(account,`${account.business_account_id}?fields=id,health_status`),
+    inspectMeta(account,`${account.phone_number_id}?fields=id,display_phone_number,verified_name,quality_rating`),
+  ]);
+  return {
+    checked_at:new Date().toISOString(),
+    graph_version:process.env.META_GRAPH_VERSION||'v23.0',
+    phone_number_id:account.phone_number_id,
+    business_account_id:account.business_account_id,
+    waba,
+    phone,
+  };
+}
+
 export async function sendWhatsApp(account:WhatsAppAccount,to:string,payload:Record<string,unknown>){
   if(!account.is_active)throw Error('WhatsApp connection is disabled');
   return meta(account,`${account.phone_number_id}/messages`,{method:'POST',body:JSON.stringify({messaging_product:'whatsapp',recipient_type:'individual',to:to.replace(/^\+/,''),...payload})});

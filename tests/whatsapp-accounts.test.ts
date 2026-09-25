@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {decryptAccessToken, encryptAccessToken} from '../lib/whatsapp-credentials';
 import {resolveWebhookAccount} from '../services/whatsapp-routing';
 import {statusAdvance} from '../lib/domain';
-import {sendWhatsApp,type WhatsAppAccount} from '../services/whatsapp.service';
+import {getWhatsAppHealth,sendWhatsApp,type WhatsAppAccount} from '../services/whatsapp.service';
 
 afterEach(()=>vi.unstubAllGlobals());
 
@@ -53,6 +53,21 @@ describe('Multi-number routing',()=>{
     await expect(resolveWebhookAccount('999999',lookup)).resolves.toBeNull();
     await expect(resolveWebhookAccount('not-a-number',lookup)).resolves.toBeNull();
     await expect(resolveWebhookAccount('100003',async()=>({...accounts[0],phone_number_id:'100003',is_active:false}))).resolves.toBeNull();
+  });
+
+  it('reads WABA health without exposing the encrypted token',async()=>{
+    const key=Buffer.alloc(32,7).toString('base64');
+    process.env.WHATSAPP_TOKEN_ENCRYPTION_KEY=key;
+    const fetch=vi.fn()
+      .mockResolvedValueOnce({ok:true,status:200,json:async()=>({id:'1975778520048284',health_status:{can_send_message:'LIMITED'}})})
+      .mockResolvedValueOnce({ok:true,status:200,json:async()=>({id:'1415163475002152',display_phone_number:'+91 92034 77793',verified_name:'SCM Pharmacy',quality_rating:'GREEN'})});
+    vi.stubGlobal('fetch',fetch);
+    const connection:WhatsAppAccount={id:'new-account',organization_id:'workspace-a',phone_number_id:'1415163475002152',business_account_id:'1975778520048284',is_active:true,...encryptAccessToken('token-for-health-check',key)};
+    const health=await getWhatsAppHealth(connection);
+    expect(health.waba).toMatchObject({ok:true,data:{id:'1975778520048284'}});
+    expect(health.phone).toMatchObject({ok:true,data:{id:'1415163475002152'}});
+    expect(JSON.stringify(health)).not.toContain('token-for-health-check');
+    expect(fetch).toHaveBeenNthCalledWith(1,expect.stringContaining('/1975778520048284?fields=id,health_status'),expect.objectContaining({headers:expect.objectContaining({Authorization:'Bearer token-for-health-check'})}));
   });
 
   it('sends with the selected account Phone Number ID and encrypted token',async()=>{
@@ -112,5 +127,16 @@ describe('WhatsApp delivery status and n8n reply routing',()=>{
     expect(replyRoute).toContain('select status,error_code');
     expect(replyRoute).toContain('error_code:syncedErrorCode');
     expect(bootstrapRoute).toContain('meta_error_code');
+  });
+});
+
+describe('WhatsApp health endpoint security',()=>{
+  const route=readFileSync(new URL('../app/api/whatsapp-accounts/health/route.ts',import.meta.url),'utf8');
+  it('scopes health lookup to the signed-in organization and uses only encrypted token columns',()=>{
+    expect(route).toContain('organization_id=');
+    expect(route).toContain('access_token_ciphertext');
+    expect(route).toContain('access_token_iv');
+    expect(route).toContain('access_token_tag');
+    expect(route).toContain('Owner or admin access required');
   });
 });
