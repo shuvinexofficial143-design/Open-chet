@@ -67,7 +67,9 @@ describe('Multi-number routing',()=>{
     expect(health.waba_phone_numbers.ok).toBe(true);
     expect(health.subscribed_apps.ok).toBe(true);
     expect(health.token_app.ok).toBe(true);
-    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(health.token_permissions.ok).toBe(true);
+    expect(health.phone_registration.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(7);
     expect(JSON.stringify(health)).not.toContain('health-secret');
   });
 
