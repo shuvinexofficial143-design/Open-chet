@@ -216,16 +216,21 @@ export async function POST(req:Request){
       }
 
       for(const s of value.statuses||[])await db().begin(async sql=>{
-        const [message]=await sql`select id,status,organization_id from messages where meta_message_id=${s.id} for update`;
-        if(!message)return;
-
+        // Meta can deliver a status webhook milliseconds before n8n syncs the outbound
+        // message into Open Chet. Store the event first so that race is never lost.
         await sql`insert into message_status_events(organization_id,meta_message_id,status,event_at,error_code)
           values(
-            ${message.organization_id},${s.id},${s.status},
+            ${org},${s.id},${s.status},
             ${new Date(Number(s.timestamp)*1000)},
             ${s.errors?.[0]?.code?.toString()||null}
           )
           on conflict do nothing`;
+
+        const [message]=await sql`select id,status,organization_id
+          from messages
+          where meta_message_id=${s.id} and organization_id=${org}
+          for update`;
+        if(!message)return;
 
         const status=statusAdvance(message.status,s.status);
         await sql`update messages

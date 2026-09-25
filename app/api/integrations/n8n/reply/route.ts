@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {db,failure,HttpError} from '@/lib/server';
-import {normalizePhone} from '@/lib/domain';
+import {normalizePhone,statusAdvance} from '@/lib/domain';
 import {verifyN8nBridgeRequest} from '@/services/n8n.service';
 
 const input=z.object({
@@ -45,12 +45,22 @@ export async function POST(req:Request){
       if(existing.length)return Response.json({ok:true,duplicate:true});
     }
 
+    let syncedStatus='sent';
+    if(value.meta_message_id){
+      const events=await sql`select status
+        from message_status_events
+        where organization_id=${account.organization_id}
+          and meta_message_id=${value.meta_message_id}
+        order by event_at`;
+      syncedStatus=events.reduce((status,event)=>statusAdvance(status,event.status),'sent');
+    }
+
     await sql.begin(async tx=>{
       await tx`insert into messages(
           organization_id,conversation_id,direction,kind,body,status,sender_name,meta_message_id,media_id,payload
         ) values(
           ${account.organization_id},${conversation.id},'out',${value.kind},${value.body},
-          'sent','n8n AI',${value.meta_message_id||null},${value.media_id||null},
+          ${syncedStatus},'n8n AI',${value.meta_message_id||null},${value.media_id||null},
           ${tx.json({source:'n8n',page:value.page||null,products:value.products||[]})}
         )`;
 
@@ -59,7 +69,7 @@ export async function POST(req:Request){
         where id=${conversation.id} and organization_id=${account.organization_id}`;
     });
 
-    return Response.json({ok:true});
+    return Response.json({ok:true,status:syncedStatus});
   }catch(error){
     return failure(error);
   }

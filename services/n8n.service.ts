@@ -58,18 +58,6 @@ export async function forwardInboundToN8n(payload:N8nInboundPayload,config?:N8nB
   const bridge=config??await getN8nBridgeConfig(payload.organization_id);
   if(!bridge)return false;
 
-  let authSecret=bridge.secret;
-  try{
-    const [account]=await db()`select
-        access_token_ciphertext,access_token_iv,access_token_tag
-      from whatsapp_accounts
-      where id=${payload.whatsapp_account_id}
-        and organization_id=${payload.organization_id}
-        and is_active=true
-      limit 1`;
-    if(account)authSecret=decryptAccessToken(account as any);
-  }catch{}
-
   const waId=payload.customer_phone.replace(/^\+/,'');
   const compatiblePayload={
     messaging_product:'whatsapp',
@@ -86,18 +74,49 @@ export async function forwardInboundToN8n(payload:N8nInboundPayload,config?:N8nB
     },
   };
 
-  const response=await fetch(bridge.url,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':`Bearer ${authSecret}`,
-      'X-Open-Chet-Source':'whatsapp',
-    },
-    body:JSON.stringify(compatiblePayload),
-    signal:AbortSignal.timeout(8000),
-  });
-  if(!response.ok)throw new Error(`n8n bridge returned HTTP ${response.status}`);
-  return true;
+  // One Open Chet workspace can own multiple WhatsApp numbers, while n8n Header Auth
+  // accepts only one secret. Prefer the dedicated bridge secret, then gracefully
+  // fall back to active account tokens (default first) for backwards compatibility.
+  const authCandidates:string[]=[bridge.secret];
+  try{
+    const accounts=await db()`select
+        id,is_default,access_token_ciphertext,access_token_iv,access_token_tag
+      from whatsapp_accounts
+      where organization_id=${payload.organization_id}
+        and is_active=true
+        and access_token_ciphertext is not null
+        and access_token_iv is not null
+        and access_token_tag is not null
+      order by is_default desc,(id=${payload.whatsapp_account_id}) desc,created_at`;
+    for(const account of accounts){
+      try{
+        const token=decryptAccessToken(account as any);
+        if(!authCandidates.includes(token))authCandidates.push(token);
+      }catch{}
+    }
+  }catch{}
+
+  let lastStatus=0;
+  for(const authSecret of authCandidates){
+    const response=await fetch(bridge.url,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${authSecret}`,
+        'X-Open-Chet-Bridge-Secret':bridge.secret,
+        'X-Open-Chet-Source':'whatsapp',
+      },
+      body:JSON.stringify(compatiblePayload),
+      signal:AbortSignal.timeout(8000),
+    });
+    if(response.ok)return true;
+    lastStatus=response.status;
+    // Header-auth mismatch: try the next compatible secret without dropping the message.
+    if(response.status===401||response.status===403)continue;
+    throw new Error(`n8n bridge returned HTTP ${response.status}`);
+  }
+
+  throw new Error(`n8n bridge authentication failed (HTTP ${lastStatus||401})`);
 }
 
 export async function verifyN8nBridgeRequest(req:Request,organizationId:string) {
