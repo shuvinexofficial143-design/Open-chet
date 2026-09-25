@@ -216,13 +216,14 @@ export async function POST(req:Request){
       }
 
       for(const s of value.statuses||[])await db().begin(async sql=>{
+        const errorCode=s.errors?.[0]?.code?.toString()||null;
         // Meta can deliver a status webhook milliseconds before n8n syncs the outbound
         // message into Open Chet. Store the event first so that race is never lost.
         await sql`insert into message_status_events(organization_id,meta_message_id,status,event_at,error_code)
           values(
             ${org},${s.id},${s.status},
             ${new Date(Number(s.timestamp)*1000)},
-            ${s.errors?.[0]?.code?.toString()||null}
+            ${errorCode}
           )
           on conflict do nothing`;
 
@@ -243,7 +244,7 @@ export async function POST(req:Request){
 
         if(status==='failed'){
           await sql`insert into notifications(organization_id,body)
-            values(${message.organization_id},'A WhatsApp message failed. Open the inbox to review.')`;
+            values(${message.organization_id},${errorCode?`A WhatsApp message failed (Meta ${errorCode}). Open the inbox to review.`:'A WhatsApp message failed. Open the inbox to review.'})`;
         }
       });
     }

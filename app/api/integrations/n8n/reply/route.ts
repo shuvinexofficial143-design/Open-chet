@@ -46,13 +46,15 @@ export async function POST(req:Request){
     }
 
     let syncedStatus='sent';
+    let syncedErrorCode:string|null=null;
     if(value.meta_message_id){
-      const events=await sql`select status
+      const events=await sql`select status,error_code
         from message_status_events
         where organization_id=${account.organization_id}
           and meta_message_id=${value.meta_message_id}
         order by event_at`;
       syncedStatus=events.reduce((status,event)=>statusAdvance(status,event.status),'sent');
+      syncedErrorCode=[...events].reverse().find(event=>event.status==='failed')?.error_code??null;
     }
 
     await sql.begin(async tx=>{
@@ -69,7 +71,7 @@ export async function POST(req:Request){
         where id=${conversation.id} and organization_id=${account.organization_id}`;
     });
 
-    return Response.json({ok:true,status:syncedStatus});
+    return Response.json({ok:true,status:syncedStatus,error_code:syncedErrorCode});
   }catch(error){
     return failure(error);
   }
