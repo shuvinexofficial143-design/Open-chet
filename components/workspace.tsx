@@ -15,6 +15,7 @@ import CataloguePanel, {ProductMessage} from './catalogue-panel';
 import Dialog from './dialog';
 import {catalogueDemoProducts, productSnapshot} from '@/lib/catalogue';
 import {canAdmin, canManage, messagingOpen, normalizePhone, templateVariables} from '@/lib/domain';
+import {customerThreadData,orderedMessages,selectedThread,createRefreshQueue} from '@/lib/inbox-state';
 import {demoAction, demoData} from '@/lib/demo';
 import {api, browserDB, configured} from '@/lib/supabase';
 import {signOutPhoneSession} from '@/lib/phone-auth';
@@ -39,6 +40,14 @@ export default function Workspace() {
   const [toolView, setToolView] = useState<ToolView>('home');
   const [moreView, setMoreView] = useState<MoreView>('home');
   const [selected, setSelected] = useState('');
+  const [routeChoice,setRouteChoice]=useState('');
+  const [historyMore,setHistoryMore]=useState(false);
+  const selectedRef=useRef('');
+  const searchRef=useRef('');
+  const historyPages=useRef(1);
+  const inboxPages=useRef(1);
+  const contactsPages=useRef(1);
+  const refreshQueue=useRef<ReturnType<typeof createRefreshQueue<Data>>|null>(null);
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState('');
   const [chatSearch, setChatSearch] = useState('');
@@ -77,11 +86,46 @@ export default function Workspace() {
     setData((current) => current ? {...current, products} : current);
   }
 
-  async function reload() {
-    const next = await api('/api/bootstrap?limit=100') as Data;
-    if (catalogueLoaded.current && state.current) next.products = state.current.products;
-    setData(next);
-    return next;
+  async function fetchSnapshot(){
+    const suffix='&q='+encodeURIComponent(searchRef.current)+'&focus='+encodeURIComponent(selectedRef.current);
+    let next=await api('/api/bootstrap?limit=100'+suffix) as Data;
+    for(let page=1;page<inboxPages.current&&next.next_thread_cursor;page++){
+      const cursor=next.next_thread_cursor;
+      const more=await api('/api/bootstrap?limit=100&thread_before='+encodeURIComponent(cursor.at)+'&thread_before_id='+cursor.id+suffix);
+      next={...next,conversations:[...new Map([...next.conversations,...more.conversations].map(c=>[c.id,c])).values()],
+        contacts:[...new Map([...next.contacts,...more.contacts].map(c=>[c.id,c])).values()],
+        notes:[...new Map([...next.notes,...more.notes].map(n=>[n.id,n])).values()],
+        has_more:more.has_more,next_thread_cursor:more.next_thread_cursor};
+    }
+    for(let page=1;page<contactsPages.current;page++){
+      const more=await api('/api/bootstrap?limit=100&contacts_offset='+page*100+suffix);
+      next.contacts=[...new Map([...next.contacts,...more.contacts].map(c=>[c.id,c])).values()];
+      next.contacts_has_more=more.contacts_has_more;
+    }
+    const selectedId=selectedThread(next,selectedRef.current);
+    if(selectedId){
+      const history:Message[]=[];
+      let cursor='';let hasMore=false;
+      for(let page=0;page<historyPages.current;page++){
+        const result=await api('/api/bootstrap?conversation='+selectedId+cursor);
+        history.push(...result.messages);hasMore=result.has_more;
+        const oldest=result.messages[0];
+        if(!hasMore||!oldest)break;
+        cursor='&before='+encodeURIComponent(oldest.cursor_at||oldest.created_at)+'&before_id='+oldest.id;
+      }
+      next.messages=orderedMessages([...next.messages.filter(m=>m.conversation_id!==selectedId),...history]);
+      next.history_has_more=hasMore;
+    }
+    if(catalogueLoaded.current&&state.current)next.products=state.current.products;
+    return customerThreadData(next);
+  }
+
+  async function reload(){
+    if(!refreshQueue.current)refreshQueue.current=createRefreshQueue(fetchSnapshot,next=>{
+      state.current=next;setData(next);setHistoryMore(Boolean(next.history_has_more));
+      setSelected(current=>selectedThread(next,current));
+    });
+    return refreshQueue.current();
   }
 
   useEffect(() => {
@@ -98,15 +142,16 @@ export default function Workspace() {
           next.products = next.products.map((product: Row) => Number(product.price) === 0 ? {...product, price: null} : product);
           next.catalogue_demo_version = 3;
         }
-        if (active) {setData(next); setSelected(next.conversations[0]?.id || '');}
+        if (active) {const projected=customerThreadData(next);setData(projected);setSelected(projected.conversations[0]?.id||'');}
       } catch {
-        const next = demoData();
+        const next = customerThreadData(demoData());
         setData(next);
         setSelected(next.conversations[0]?.id || '');
       }
     } else {
       reload().then((next) => {
-        setSelected(next.conversations[0]?.id || '');
+        selectedRef.current=next.conversations[0]?.id||'';setSelected(selectedRef.current);
+        reload().catch(()=>{});
         loadCatalogue().catch(() => {});
       }).catch(() => router.push('/login'));
     }
@@ -114,18 +159,26 @@ export default function Workspace() {
     return () => {active = false;};
   }, []);
 
+  useEffect(()=>{
+    searchRef.current=(page==='Chats'||page==='Contacts')?query:'';inboxPages.current=1;contactsPages.current=1;
+    if(demo||!state.current)return;
+    const timer=window.setTimeout(()=>reload().catch(()=>notify('Search could not be refreshed')),200);
+    return()=>window.clearTimeout(timer);
+  },[query,page,demo]);
   useEffect(() => {if (demo && data) localStorage.setItem('open-chet-demo-v1', JSON.stringify(data));}, [data, demo]);
   useEffect(() => {
     if (!data || demo) return;
     const org = data.organization_id;
-    const channel = browserDB().channel(`inbox:${org}`)
-      .on('postgres_changes', {event: '*', schema: 'public', table: 'messages', filter: `organization_id=eq.${org}`}, () => reload())
-      .on('postgres_changes', {event: '*', schema: 'public', table: 'conversations', filter: `organization_id=eq.${org}`}, () => reload())
-      .on('postgres_changes', {event: '*', schema: 'public', table: 'notes', filter: `organization_id=eq.${org}`}, () => reload())
-      .on('postgres_changes', {event: '*', schema: 'public', table: 'notifications', filter: `organization_id=eq.${org}`}, () => reload())
-      .subscribe();
-    const timer = window.setInterval(() => reload().catch(() => {}), 30000);
-    return () => {browserDB().removeChannel(channel); window.clearInterval(timer);};
+    let timer:number|undefined;
+    const refresh=()=>{window.clearTimeout(timer);timer=window.setTimeout(()=>reload().catch(()=>notify('Inbox refresh failed. Reconnecting…')),150);};
+    const channel=browserDB().channel('inbox:'+org);
+    for(const table of ['messages','conversations','contacts','notes','notifications'])
+      channel.on('postgres_changes',{event:'*',schema:'public',table,filter:'organization_id=eq.'+org},refresh);
+    channel.subscribe(status=>{if(status==='SUBSCRIBED')refresh();});
+    const poll=window.setInterval(refresh,30000);
+    window.addEventListener('online',refresh);window.addEventListener('focus',refresh);
+    return ()=>{browserDB().removeChannel(channel);window.clearInterval(poll);window.clearTimeout(timer);
+      window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
   }, [data?.organization_id, demo]);
   useEffect(() => {messageEnd.current?.scrollIntoView({behavior: 'smooth'});}, [selected, data?.messages.length]);
 
@@ -148,11 +201,12 @@ export default function Workspace() {
   }, [dialog, catalogueContext, contactInfoId, showNotifications, showChatMenu, showSearch, mobileChat, page, toolView, moreView]);
 
   async function act(action: Action, success?: string) {
+    if(action.type==='send')action={...action,values:{...action.values,route_conversation_id:routeChoice||state.current?.conversations.find(c=>c.id===action.id)?.route_conversation_id}};
     setBusy(true);
     try {
       let next: Data;
       if (demo) {
-        next = demoAction(state.current!, action);
+        next = customerThreadData(demoAction(state.current!, action));
         state.current = next;
         setData(next);
       } else {
@@ -193,21 +247,16 @@ export default function Workspace() {
   }
 
   async function openConversation(id: string) {
-    setSelected(id);
+    selectedRef.current=id;historyPages.current=1;setSelected(id);setRouteChoice('');
     setMobileChat(true);
     setDraft('');
     setAttachment(null);
     setShowChatMenu(false);
     await act({type: 'read', id});
-    if (!demo) {
-      try {
-        const result = await api(`/api/bootstrap?conversation=${id}`);
-        setData((current) => current ? {...current, messages: [...current.messages.filter((message) => message.conversation_id !== id), ...result.messages]} : current);
-      } catch (error) {notify((error as Error).message);}
-    }
   }
 
   async function openContact(contact: Contact) {
+    selectedRef.current=contact.id;
     const next = await act({type: 'open', id: contact.id});
     if (!next) return;
     setPage('Chats');
@@ -220,6 +269,9 @@ export default function Workspace() {
     if ((!draft.trim() && !attachment) || !selected || sending) return;
 
     const conversationId = selected;
+    const routeId=routeChoice||state.current?.conversations.find(c=>c.id===selected)?.route_conversation_id;
+    if(attachment?.route_conversation_id&&attachment.route_conversation_id!==routeId){notify('Choose the attachment’s WhatsApp route or upload it again');return;}
+    if(demo){const next=await act({type:'send',id:conversationId,values:{body:draft.trim()||attachment?.name||'',kind:attachment?.kind||'text',media_url:attachment?.media_url}},'Demo message sent');if(next){setDraft('');setAttachment(null);}return;}
     const outgoingBody = draft.trim() || attachment?.name || '';
     const outgoingKind = attachment?.kind || 'text';
     const outgoingAttachment = attachment;
@@ -261,6 +313,7 @@ export default function Workspace() {
             media_id: outgoingAttachment?.media_id,
             media_url: outgoingAttachment?.media_url,
             idempotency_key: idempotencyKey,
+            route_conversation_id: routeId,
           },
         }),
       });
@@ -286,7 +339,7 @@ export default function Workspace() {
         const kind = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'document';
         setAttachment({id: crypto.randomUUID(), name: file.name, kind, media_url: URL.createObjectURL(file)});
       } else {
-        const form = new FormData(); form.set('file', file); form.set('conversation_id', selected);
+        const form = new FormData(); form.set('file', file); form.set('conversation_id', selected);form.set('route_conversation_id',routeChoice||state.current?.conversations.find(c=>c.id===selected)?.route_conversation_id||'');
         setAttachment({id: crypto.randomUUID(), ...await api('/api/media', {method: 'POST', body: form})});
       }
     } catch (error) {notify((error as Error).message);} finally {setBusy(false);}
@@ -347,7 +400,9 @@ export default function Workspace() {
 
   if (!data) return <div className="loading"><span className="brand-icon"><MessageSquare/></span><h2>Opening Open Chet…</h2><a href="/login">Sign in</a></div>;
 
-  const conversation = data.conversations.find((item) => item.id === selected);
+  const thread=data.conversations.find(item=>item.id===selected);
+  const chosenRoute=thread?.routes?.find((r:Row)=>r.id===(routeChoice||thread.route_conversation_id));
+  const conversation=thread&&chosenRoute&&!demo?{...thread,...chosenRoute,id:thread.id}:thread;
   const contact = data.contacts.find((item) => item.id === conversation?.contact_id);
   const conversationAccount = data.connection?.whatsapp_accounts?.find((account) => account.id === conversation?.whatsapp_account_id);
   const messagingWindowOpen = messagingOpen(conversation?.last_inbound_at || null);
@@ -357,7 +412,7 @@ export default function Workspace() {
     const person = data.contacts.find((candidate) => candidate.id === item.contact_id);
     return [person?.name, person?.phone, person?.company, item.preview].join(' ').toLowerCase().includes(query.toLowerCase());
   }).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-  const messages = data.messages.filter((message) => message.conversation_id === selected && message.body.toLowerCase().includes(chatSearch.toLowerCase()));
+  const messages = orderedMessages(data.messages).filter((message) => message.conversation_id === selected && message.body.toLowerCase().includes(chatSearch.toLowerCase()));
   const quickReplies = data.quick_replies.filter((reply) => `${reply.shortcut} ${reply.body}`.toLowerCase().includes(query.toLowerCase()));
   const infoContact = data.contacts.find((item) => item.id === contactInfoId);
   const infoConversation = data.conversations.find((item) => item.contact_id === contactInfoId);
@@ -398,7 +453,7 @@ export default function Workspace() {
               <span className={`avatar color-${data.contacts.findIndex((candidate) => candidate.id === item.contact_id) % 4}`}>{initials(displayName)}</span>
               <div className="conversation-copy"><div className="conversation-title"><strong>{displayName}</strong><time>{time(item.updated_at)}</time></div><div className="conversation-preview"><p>{item.preview || 'Start a conversation'}{account ? <small>{` · ${account.display_phone_number || account.label}`}</small> : null}</p>{item.unread > 0 ? <b className="unread">{item.unread}</b> : null}</div></div>
             </button>;
-          })}{!visibleConversations.length ? <div className="empty"><Search/><h3>No chats found</h3></div> : null}</div>
+          })}{data.has_more?<button className="secondary load-more" onClick={async()=>{inboxPages.current++;await reload().catch(()=>notify('More chats could not be loaded'));}}>Load more chats</button>:null}{!visibleConversations.length ? <div className="empty"><Search/><h3>No chats found</h3></div> : null}</div>
         </section>
         {conversation && contact ? <section className="chat-panel">
           <header className="chat-header">
@@ -417,9 +472,11 @@ export default function Workspace() {
               </div> : null}
             </div>
           </header>
+          {thread&&thread.routes?.length>1?<label className="reply-route">Reply via <select aria-label="Reply via WhatsApp number" value={routeChoice||thread.route_conversation_id} onChange={e=>{setRouteChoice(e.target.value);setAttachment(null);}}>{thread.routes.map((r:Row)=>{const account=data.connection?.whatsapp_accounts.find(a=>a.id===r.whatsapp_account_id);return <option key={r.id} value={r.id} disabled={!account?.is_active}>{account?(account.display_phone_number||account.label)+(account.is_active?'':' · disabled'):'Legacy · route unknown'}</option>;})}</select></label>:null}
+          {conversationAccount&&!conversationAccount.is_active?<div className="window-state">This WhatsApp number is disabled. Select an active route before replying.</div>:null}
           {showSearch ? <div className="search chat-search"><Search size={16}/><input aria-label="Find in chat" placeholder="Find a message" value={chatSearch} onChange={(event) => setChatSearch(event.target.value)}/><button className="icon-button" onClick={() => {setShowSearch(false); setChatSearch('');}}><X/></button></div> : null}
           <div className="messages">
-            {!demo && messages.length >= 50 ? <button className="secondary load-more" onClick={async () => {const result = await api(`/api/bootstrap?conversation=${selected}&before=${encodeURIComponent(messages[0].created_at)}`); setData((current) => current ? {...current, messages: [...result.messages, ...current.messages]} : current);}}>Load older messages</button> : null}
+            {!demo&&historyMore?<button className="secondary load-more" onClick={async()=>{historyPages.current++;try{await reload();}catch{notify('Older messages could not be loaded');}}}>Load older messages</button>:null}
             <div className="chat-security"><ShieldCheck size={13}/>{demo ? 'Demo conversation' : 'Messages are saved securely'}</div>
             {messages.map((message, index) => <div key={message.id}>
               {(index === 0 || new Date(messages[index - 1].created_at).toDateString() !== new Date(message.created_at).toDateString()) ? <div className="date-divider">{new Date(message.created_at).toLocaleDateString('en-IN', {day: 'numeric', month: 'long'})}</div> : null}
@@ -432,7 +489,7 @@ export default function Workspace() {
                 {message.kind === 'catalogue' && Array.isArray(message.payload?.products) && message.payload.products.length
                   ? <div className="catalogue-message"><p>{message.body || '🛍️ Product catalogue'}</p><div className="catalogue-message-grid">{message.payload.products.map((product: Row) => <ProductMessage key={String(product.id)} product={productSnapshot(product)}/>)}</div></div>
                   : message.kind === 'product' && message.product_snapshot ? <ProductMessage product={message.product_snapshot}/> : <p>{message.body}</p>}
-                <div className="message-meta"><time>{time(message.created_at)}</time>{message.direction === 'out' ? message.status === 'failed' ? <span title={message.meta_error_code ? `Meta error ${message.meta_error_code}` : 'WhatsApp delivery failed'}>failed{message.meta_error_code ? ` · Meta ${message.meta_error_code}` : ''}</span> : message.status === 'read' ? <CheckCheck size={15} className="read"/> : message.status === 'delivered' ? <CheckCheck size={15}/> : message.status === 'sent' ? <Check size={15}/> : message.status === 'demo' ? <span>Demo</span> : <span>{message.status}</span> : null}</div>
+                <div className="message-meta">{!demo?<span title={message.phone_number_id?('Phone Number ID '+message.phone_number_id):'Historical account route unknown'}>{data.connection?.whatsapp_accounts.find(a=>a.id===message.whatsapp_account_id)?.display_phone_number||message.phone_number_id||'Legacy route unknown'}</span>:null}<time>{time(message.created_at)}</time>{message.direction === 'out' ? message.status === 'failed' ? <span title={message.meta_error_code ? `Meta error ${message.meta_error_code}` : 'WhatsApp delivery failed'}>failed{message.meta_error_code ? ` · Meta ${message.meta_error_code}` : ''}</span> : message.status === 'read' ? <CheckCheck size={15} className="read"/> : message.status === 'delivered' ? <CheckCheck size={15}/> : message.status === 'sent' ? <Check size={15}/> : message.status === 'demo' ? <span>Demo</span> : <span>{message.status}</span> : null}</div>
               </div></div>
             </div>)}<div ref={messageEnd}/>
           </div>
@@ -453,7 +510,7 @@ export default function Workspace() {
         </section> : <section className="empty inbox-empty"><MessageSquare size={42}/><h2>Select a chat</h2><p>Choose a conversation to view messages.</p></section>}
       </main> : null}
 
-      {page === 'Contacts' ? <main className="page-content mvp-page"><div className="simple-page-header"><div><h1>Contacts</h1><p>{data.contacts.length} contacts</p></div><button className="primary" onClick={() => setDialog({type: 'contact'})}><Plus/>Add</button></div><div className="search page-search"><Search/><input aria-label="Search contacts" placeholder="Search contacts…" value={query} onChange={(event) => setQuery(event.target.value)}/></div><div className="contacts-list">{data.contacts.filter((item) => [item.name, item.phone, item.company].join(' ').toLowerCase().includes(query.toLowerCase())).map((item) => <button className="contact-list-item" key={item.id} onClick={() => setContactInfoId(item.id)}><span className="avatar">{initials(item.name || item.phone)}</span><span><b>{item.name || item.phone}</b><small>{item.phone}{item.company ? ` · ${item.company}` : ''}</small></span><ChevronRight/></button>)}</div></main> : null}
+      {page === 'Contacts' ? <main className="page-content mvp-page"><div className="simple-page-header"><div><h1>Contacts</h1><p>{data.contacts.length} contacts</p></div><button className="primary" onClick={() => setDialog({type: 'contact'})}><Plus/>Add</button></div><div className="search page-search"><Search/><input aria-label="Search contacts" placeholder="Search contacts…" value={query} onChange={(event) => setQuery(event.target.value)}/></div><div className="contacts-list">{data.contacts.filter((item) => [item.name, item.phone, item.company].join(' ').toLowerCase().includes(query.toLowerCase())).map((item) => <button className="contact-list-item" key={item.id} onClick={() => setContactInfoId(item.id)}><span className="avatar">{initials(item.name || item.phone)}</span><span><b>{item.name || item.phone}</b><small>{item.phone}{item.company ? ` · ${item.company}` : ''}</small></span><ChevronRight/></button>)}</div>{data.contacts_has_more?<button className="secondary" onClick={async()=>{contactsPages.current++;await reload().catch(()=>notify('More contacts could not be loaded'));}}>Load more contacts</button>:null}</main> : null}
 
       {page === 'Tools' ? <main className="page-content mvp-page">
         {toolView === 'home' ? <><div className="simple-page-header"><div><h1>Tools</h1><p>Everyday conversation tools</p></div></div><div className="tools-grid">
@@ -496,11 +553,11 @@ export default function Workspace() {
       {dialog.type === 'new-chat' ? <div className="picker-list">{data.contacts.map((item) => <button key={item.id} onClick={() => {setDialog(null); openContact(item);}}><span className="avatar small">{initials(item.name || item.phone)}</span><span><b>{item.name || item.phone}</b><small>{item.phone}</small></span><ChevronRight/></button>)}<button className="secondary" onClick={() => setDialog({type: 'contact'})}><Plus/>Add contact</button></div> : null}
       {dialog.type === 'quick_reply' ? <form onSubmit={(event) => saveForm(event, 'quick_reply', dialog.row?.id)}>{field('Shortcut', 'shortcut', dialog.row?.shortcut || '/', 'text', true)}{area('Reply text', 'body', dialog.row?.body)}<button className="primary" disabled={busy}>Save reply</button></form> : null}
       {dialog.type === 'product' ? <form onSubmit={(event) => saveForm(event, 'product', dialog.row?.id)}>{field('Product name', 'name', dialog.row?.name, 'text', true)}{area('Description', 'description', dialog.row?.description)}<div className="form-grid">{field('Category', 'category', dialog.row?.category)}{field('Price (optional)', 'price', dialog.row?.price ?? '', 'number')}{field('Currency', 'currency', dialog.row?.currency || 'INR')}{field('Stock', 'stock', dialog.row?.stock ?? 0, 'number')}{field('Image URL (optional)', 'image_url', dialog.row?.image_url, 'url')}{field('Meta catalogue ID', 'catalogue_id', dialog.row?.catalogue_id)}{field('Retailer product ID', 'retailer_id', dialog.row?.retailer_id)}{field('Brand', 'brand', dialog.row?.brand)}{field('Composition', 'composition', dialog.row?.composition)}{field('Strength', 'strength', dialog.row?.strength)}{field('Form type', 'form_type', dialog.row?.form_type)}{field('Pack size', 'pack_size', dialog.row?.pack_size)}{selectField('Availability', 'availability', ['in_stock', 'out_of_stock', 'on_request'], dialog.row?.availability)}</div>{area('Notes', 'notes', dialog.row?.notes)}<label className="checkbox-row"><input type="checkbox" name="featured" defaultChecked={dialog.row?.featured}/>Featured product</label><button className="primary" disabled={busy}>Save product</button></form> : null}
-      {dialog.type === 'send-template' ? <div className="picker-list">{data.templates.filter((template) => demo || template.status === 'APPROVED').map((template) => <button key={template.id} onClick={() => setDialog({type: 'send-template-form', row: template})}><FileText/><span><b>{template.name}</b><small>{template.body}</small></span><ChevronRight/></button>)}{!data.templates.length ? <p>No approved templates are available.</p> : null}</div> : null}
+      {dialog.type === 'send-template' ? <div className="picker-list">{data.templates.filter((template) => demo || (template.status === 'APPROVED'&&(!template.whatsapp_account_id||template.whatsapp_account_id===conversation?.whatsapp_account_id))).map((template) => <button key={template.id} onClick={() => setDialog({type: 'send-template-form', row: template})}><FileText/><span><b>{template.name}</b><small>{template.body}</small></span><ChevronRight/></button>)}{!data.templates.length ? <p>No approved templates are available.</p> : null}</div> : null}
       {dialog.type === 'send-template-form' && dialog.row ? <form onSubmit={async (event) => {event.preventDefault(); const form = new FormData(event.currentTarget); const result = await act({type: 'send', id: selected, values: {kind: 'template', template_id: dialog.row!.id, variables: templateVariables(dialog.row!.body).map((index) => String(form.get(`var${index}`))), idempotency_key: crypto.randomUUID()}}, demo ? 'Template simulated' : 'Template queued'); if (result) setDialog(null);}}><div className="template-preview"><p>{dialog.row.body}</p></div>{templateVariables(dialog.row.body).map((index) => field(`Variable ${index}`, `var${index}`, index === 1 ? contact?.name : '', 'text', true))}<button className="primary" disabled={busy}>Send template</button></form> : null}
       {dialog.type === 'import' ? <><p>CSV columns: name, phone, company, category, tags, notes, custom_fields. Phone numbers must include a country code.</p><label>Select CSV<input type="file" accept=".csv,text/csv" onChange={async (event) => {const file = event.target.files?.[0]; if (!file) return; const parsed = Papa.parse<Record<string, string>>(await file.text(), {header: true, skipEmptyLines: true}); const seen = new Set(data.contacts.map((item) => item.phone)); setImportRows(parsed.data.slice(0, 1000).map((row, index) => {let error = parsed.errors.length ? 'CSV parse error' : ''; let phone = row.phone || ''; try {phone = normalizePhone(phone); if (seen.has(phone)) error = 'Duplicate phone'; seen.add(phone); if (!row.name?.trim()) error = 'Name required'; JSON.parse(row.custom_fields || '{}');} catch {error = 'Invalid phone or custom fields';} return {id: String(index), ...row, phone, error};}));}}/></label><div className="import-preview">{importRows.map((row) => <div key={row.id}><b>{row.name}</b><span>{row.phone}</span><span className={row.error ? 'warning' : 'green-text'}>{row.error || 'Ready'}</span></div>)}</div><p>{importRows.filter((row) => !row.error).length} ready · {importRows.filter((row) => row.error).length} skipped</p><button className="primary" disabled={busy || !importRows.some((row) => !row.error)} onClick={async () => {let count = 0; for (const row of importRows.filter((item) => !item.error)) {const next = await act({type: 'contact', values: {name: row.name, phone: row.phone, company: row.company || '', category: row.category || '', tags: (row.tags || '').split(',').map((tag: string) => tag.trim()).filter(Boolean), custom_fields: JSON.parse(row.custom_fields || '{}'), opted_in: false}}); if (!next) break; count++;} notify(`${count} contacts imported`); setDialog(null);}}>Import valid contacts</button></> : null}
-      {dialog.type === 'clear-chat' ? <><p>Clear this conversation history from Open Chet? This cannot be undone.</p><button className="danger-button" disabled={busy} onClick={async () => {const next = await act({type: 'clear_chat', id: selected}, 'Chat cleared'); if (next) setDialog(null);}}>Clear chat</button></> : null}
-      {dialog.type === 'reset' ? <><p>Reset local demo messages, contacts and settings?</p><button className="primary" onClick={() => {const next = demoData(); setData(next); setSelected(next.conversations[0].id); setDialog(null); notify('Demo reset');}}>Reset demo</button></> : null}
+      {dialog.type === 'clear-chat' ? <><p>Clear this customer’s history from the inbox on all WhatsApp numbers? Messages remain in the audit history.</p><button className="danger-button" disabled={busy} onClick={async () => {const next = await act({type: 'clear_chat', id: selected}, 'Chat cleared'); if (next) setDialog(null);}}>Clear chat</button></> : null}
+      {dialog.type === 'reset' ? <><p>Reset local demo messages, contacts and settings?</p><button className="primary" onClick={() => {const next = customerThreadData(demoData()); setData(next); setSelected(next.conversations[0].id); setDialog(null); notify('Demo reset');}}>Reset demo</button></> : null}
     </Dialog> : null}
   </div>;
 }

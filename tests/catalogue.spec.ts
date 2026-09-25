@@ -8,8 +8,7 @@ const primaryNavigation = (page: import('@playwright/test').Page, projectName: s
   projectName === 'mobile' ? page.locator('.mobile-nav') : page.locator('.mvp-sidebar nav');
 
 test('MVP navigation stays focused and mobile chats start immediately with search', async ({page}, testInfo) => {
-  const labels = await page.locator('.mobile-nav button span').allTextContents();
-  expect(labels).toEqual(['Chats', 'Contacts', 'Tools', 'More']);
+  await expect(page.locator('.mobile-nav button span')).toHaveText(['Chats', 'Contacts', 'Tools', 'More']);
   await expect(page.locator('.mobile-nav select')).toHaveCount(0);
   await expect(page.locator('.mobile-nav')).not.toContainText('Campaigns');
   await expect(page.locator('.mobile-nav')).not.toContainText('Templates');

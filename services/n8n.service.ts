@@ -33,17 +33,21 @@ function secretsEqual(a:string,b:string){
 export async function getN8nBridgeConfig(organizationId:string):Promise<N8nBridgeConfig|null>{
   const envUrl=process.env.N8N_INBOUND_WEBHOOK_URL;
   const envSecret=process.env.N8N_BRIDGE_SECRET;
-  if(envUrl&&envSecret){
-    const parsed=new URL(envUrl);
-    if(parsed.protocol!=='https:')throw new Error('N8N_INBOUND_WEBHOOK_URL must use HTTPS');
-    return {url:parsed.toString(),secret:envSecret};
-  }
+
 
   const [row]=await db()`select n8n_inbound_webhook_url,n8n_bridge_secret
     from integration_bridges
     where organization_id=${organizationId} and enabled=true
     limit 1`;
-  if(!row)return null;
+  if(!row){
+    if(!envUrl||!envSecret)return null;
+    const configuredOrg=process.env.N8N_ORGANIZATION_ID;
+    const [scope]=await db()`select count(*)::integer total,bool_or(id=${organizationId}::uuid) matches from organizations`;
+    if(configuredOrg?configuredOrg!==organizationId:scope.total!==1||!scope.matches)return null;
+    const parsed=new URL(envUrl);
+    if(parsed.protocol!=='https:')throw Error('N8N_INBOUND_WEBHOOK_URL must use HTTPS');
+    return {url:parsed.toString(),secret:envSecret};
+  }
 
   const parsed=new URL(String(row.n8n_inbound_webhook_url));
   if(parsed.protocol!=='https:')throw new Error('Stored n8n webhook URL must use HTTPS');
@@ -153,4 +157,37 @@ export async function verifyWhatsAppWebhookToken(provided:string|null){
     where enabled=true and whatsapp_verify_token=${provided}
     limit 1`;
   return Boolean(row);
+}
+
+// Dispatch state is committed before the network call. Replayed webhooks and
+// concurrent workers can only claim a pending row once.
+export async function dispatchN8nDelivery(metaId:string,org:string){
+  const [delivery]=await db()`update n8n_deliveries d set status='sending',updated_at=now()
+    where d.meta_message_id=${metaId} and d.organization_id=${org} and d.status='pending'
+    returning *`;
+  if(!delivery)return;
+  try{
+    const [conversation]=await db()`select mode,cleared_at from conversations where id=${delivery.conversation_id} and organization_id=${org}`;
+    if(conversation?.mode!=='ai'||conversation.cleared_at&&new Date(delivery.created_at)<=new Date(conversation.cleared_at)){
+      await db()`update n8n_deliveries set status='cancelled',updated_at=now() where id=${delivery.id}`;return;
+    }
+    const delivered=await forwardInboundToN8n(delivery.payload as N8nInboundPayload);
+    if(!delivered)throw Error('n8n bridge is no longer configured');
+    await db()`update n8n_deliveries set status='delivered',updated_at=now() where id=${delivery.id}`;
+  }catch{
+    await db().begin(async sql=>{
+      await sql`update n8n_deliveries set status='unknown',error='Bridge delivery not confirmed; inspect n8n execution before retrying',updated_at=now() where id=${delivery.id}`;
+      await sql`insert into notifications(organization_id,conversation_id,body)
+        values(${org},${delivery.conversation_id},'n8n reply delivery is unconfirmed. The incoming message is saved; inspect n8n before retrying.')`;
+    });
+  }
+}
+
+export async function drainN8nDeliveries(){
+  const stale=await db()`update n8n_deliveries set status='unknown',error='Dispatcher interrupted; inspect n8n execution before retrying',updated_at=now()
+    where status='sending' and updated_at<now()-interval '5 minutes' returning organization_id,conversation_id`;
+  for(const item of stale)await db()`insert into notifications(organization_id,conversation_id,body)
+    values(${item.organization_id},${item.conversation_id},'n8n delivery was interrupted. Inspect n8n before retrying.')`;
+  const pending=await db()`select meta_message_id,organization_id from n8n_deliveries where status='pending' order by created_at limit 10`;
+  for(const item of pending)await dispatchN8nDelivery(item.meta_message_id,item.organization_id);
 }

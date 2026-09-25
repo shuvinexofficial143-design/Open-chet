@@ -10,7 +10,7 @@ const input=z.object({
   kind:z.enum(['text','audio','image','document','video','template','product','catalogue']).default('text'),
   page:z.coerce.number().int().min(1).optional(),
   products:z.array(z.any()).max(8).optional(),
-  meta_message_id:z.string().trim().min(1).max(500).optional(),
+  meta_message_id:z.string().trim().min(1).max(500),
   media_id:z.string().trim().max(500).optional(),
 });
 
@@ -40,39 +40,26 @@ export async function POST(req:Request){
 
     if(!conversation)throw new HttpError(404,'Open Chet conversation not found');
 
-    if(value.meta_message_id){
-      const existing=await sql`select id from messages where meta_message_id=${value.meta_message_id}`;
-      if(existing.length)return Response.json({ok:true,duplicate:true});
-    }
-
-    let syncedStatus='sent';
-    let syncedErrorCode:string|null=null;
-    if(value.meta_message_id){
-      const events=await sql`select status,error_code
-        from message_status_events
-        where organization_id=${account.organization_id}
-          and meta_message_id=${value.meta_message_id}
+    const result=await sql.begin(async tx=>{
+      await tx`select pg_advisory_xact_lock(hashtext(${value.meta_message_id}))`;
+      const [existing]=await tx`select id,organization_id,conversation_id,direction from messages where meta_message_id=${value.meta_message_id}`;
+      if(existing){
+        if(existing.organization_id!==account.organization_id||existing.conversation_id!==conversation.id||existing.direction!=='out')
+          throw new HttpError(409,'Meta message ID conflicts with another message');
+        return {ok:true,duplicate:true};
+      }
+      const events=await tx`select status,error_code from message_status_events
+        where organization_id=${account.organization_id} and meta_message_id=${value.meta_message_id}
         order by event_at`;
-      syncedStatus=events.reduce((status,event)=>statusAdvance(status,event.status),'sent');
-      syncedErrorCode=[...events].reverse().find(event=>event.status==='failed')?.error_code??null;
-    }
-
-    await sql.begin(async tx=>{
-      await tx`insert into messages(
-          organization_id,conversation_id,direction,kind,body,status,sender_name,meta_message_id,media_id,payload
-        ) values(
-          ${account.organization_id},${conversation.id},'out',${value.kind},${value.body},
-          ${syncedStatus},'n8n AI',${value.meta_message_id||null},${value.media_id||null},
-          ${tx.json({source:'n8n',page:value.page||null,products:value.products||[]})}
-        )`;
-
-      await tx`update conversations
-        set preview=${value.body||`[${value.kind}]`},updated_at=now()
+      const syncedStatus=events.reduce((status,event)=>statusAdvance(status,event.status),'sent');
+      const syncedErrorCode=[...events].reverse().find(event=>event.status==='failed')?.error_code??null;
+      await tx`insert into messages(organization_id,conversation_id,direction,kind,body,status,sender_name,meta_message_id,media_id,payload)
+        values(${account.organization_id},${conversation.id},'out',${value.kind},${value.body},${syncedStatus},'n8n AI',
+          ${value.meta_message_id},${value.media_id||null},${tx.json({source:'n8n',page:value.page||null,products:value.products||[]})})`;
+      await tx`update conversations set preview=${value.body||('['+value.kind+']')},updated_at=now()
         where id=${conversation.id} and organization_id=${account.organization_id}`;
+      return {ok:true,status:syncedStatus,error_code:syncedErrorCode};
     });
-
-    return Response.json({ok:true,status:syncedStatus,error_code:syncedErrorCode});
-  }catch(error){
-    return failure(error);
-  }
+    return Response.json(result);
+  }catch(error){return failure(error);}
 }

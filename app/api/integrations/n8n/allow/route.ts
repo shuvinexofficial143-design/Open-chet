@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {db,failure,HttpError} from '@/lib/server';
-import {normalizePhone} from '@/lib/domain';
+import {normalizePhone,messagingOpen} from '@/lib/domain';
 import {verifyN8nBridgeRequest} from '@/services/n8n.service';
 
 const input=z.object({
@@ -22,7 +22,7 @@ export async function POST(req:Request){
     if(!await verifyN8nBridgeRequest(req,account.organization_id))throw new HttpError(401,'Invalid n8n bridge credentials');
 
     const [row]=await sql`
-      select c.id,c.mode
+      select c.id,c.mode,c.last_inbound_at,c.version
       from contacts ct
       join conversations c
         on c.organization_id=${account.organization_id}
@@ -34,7 +34,8 @@ export async function POST(req:Request){
 
     if(!row)return Response.json({allow_ai:false,reason:'conversation_not_found'});
     return Response.json({
-      allow_ai:row.mode==='ai',
+      allow_ai:row.mode==='ai'&&messagingOpen(row.last_inbound_at?.toISOString()),
+      expected_version:row.version,
       conversation_id:row.id,
       mode:row.mode
     });

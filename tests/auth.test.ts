@@ -70,7 +70,7 @@ describe('Phone OTP authentication', () => {
 
   it('offers a voice-call OTP fallback', async () => {
     expect(loginSource).toContain('Call me with OTP');
-    expect(voiceRouteSource).toContain("Channel: 'call'");
+    expect(voiceRouteSource).toMatch(/Channel:\s*'call'/);
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

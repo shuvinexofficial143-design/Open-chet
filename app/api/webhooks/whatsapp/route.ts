@@ -1,8 +1,9 @@
+import {ingestInbound} from '@/services/inbound';
 import {db,failure} from '@/lib/server';
 import {statusAdvance} from '@/lib/domain';
 import {resolveWebhookAccount,type RoutedWhatsAppAccount} from '@/services/whatsapp-routing';
 import {verifySignature} from '@/services/whatsapp.service';
-import {forwardInboundToN8n,getN8nBridgeConfig,verifyWhatsAppWebhookToken} from '@/services/n8n.service';
+import {dispatchN8nDelivery,getN8nBridgeConfig,verifyWhatsAppWebhookToken} from '@/services/n8n.service';
 
 export const runtime='nodejs';
 
@@ -48,10 +49,10 @@ export async function POST(req:Request){
           from whatsapp_accounts
           where phone_number_id=${phoneNumberId}`;
         return row?row as RoutedWhatsAppAccount:null;
-      });
+      },true);
 
       if(!account){
-        console.warn('Ignoring WhatsApp webhook for an unknown or disabled phone number');
+        console.warn('Ignoring WhatsApp webhook for an unknown phone number');
         continue;
       }
 
@@ -59,70 +60,14 @@ export async function POST(req:Request){
       const bridge=await getN8nBridgeConfig(org);
       const bridgeEnabled=Boolean(bridge);
 
-      for(const m of value.messages||[]){
+      // Disabling outbound/inbound routing must not discard late delivery receipts.
+      for(const m of account.is_active?value.messages||[]:[]){
         const bridgeEvent=await db().begin(async sql=>{
-          await sql`select pg_advisory_xact_lock(hashtext(${m.id}))`;
-          if((await sql`select id from messages where meta_message_id=${m.id}`).length)return;
-
-          const phone=`+${m.from}`;
-          const name=value.contacts?.find((item:any)=>item.wa_id===m.from)?.profile?.name||phone;
-          const existing=await sql`select id from contacts where organization_id=${org} and phone=${phone}`;
-          const [contact]=await sql`insert into contacts(organization_id,name,phone,source)
-            values(${org},${name},${phone},'whatsapp')
-            on conflict(organization_id,phone) do update set updated_at=now()
-            returning *`;
-
           const [settings]=await sql`select settings from organizations where id=${org}`;
-          const initialMode=bridgeEnabled?'ai':settings.settings.ai_enabled?'ai':'paused';
-
-          const [conv]=await sql`insert into conversations(organization_id,whatsapp_account_id,contact_id,mode)
-            values(${org},${account.id},${contact.id},${initialMode})
-            on conflict(organization_id,whatsapp_account_id,contact_id) where whatsapp_account_id is not null
-            do update set updated_at=now()
-            returning *`;
-
-          await sql`select pg_advisory_xact_lock(hashtext(${conv.id}))`;
-
-          const shouldSendWelcome=!Boolean(conv.welcome_sent);
-          if(shouldSendWelcome){
-            await sql`update conversations
-              set welcome_sent=true
-              where id=${conv.id} and organization_id=${org}`;
-          }
-
-          const timestamp=new Date(Number(m.timestamp)*1000);
-          const kind=m.type||'unsupported';
-          const content=kind==='text'
-            ?m.text?.body
-            :kind==='button'
-              ?m.button?.text
-              :kind==='interactive'
-                ?(m.interactive?.button_reply?.title||m.interactive?.list_reply?.title)
-                :m[kind]?.caption||m[kind]?.filename||`[${kind}]`;
-
-          const [message]=await sql`insert into messages(
-              organization_id,conversation_id,direction,kind,body,status,sender_name,meta_message_id,media_id,created_at
-            ) values(
-              ${org},${conv.id},'in',${kind},${content||''},'received',${name},${m.id},${m[kind]?.id||null},${timestamp}
-            ) returning id`;
-
-          await sql`update conversations
-            set unread=unread+1,
-                last_inbound_at=greatest(last_inbound_at,${timestamp}),
-                preview=case when last_inbound_at is null or last_inbound_at<=${timestamp} then ${content||''} else preview end,
-                updated_at=greatest(updated_at,${timestamp}),
-                version=version+1
-            where id=${conv.id} and organization_id=${org}`;
-
-          await sql`update ai_sessions
-            set status='cancelled'
-            where organization_id=${org} and conversation_id=${conv.id} and status in('queued','generating')`;
-
-          await sql`update messages
-            set status='cancelled'
-            where organization_id=${org} and conversation_id=${conv.id}
-              and sender_name='Open Chet AI' and status='queued'`;
-
+          const result=await ingestInbound(sql,account,m,value.contacts||[],bridgeEnabled?'ai':settings.settings.ai_enabled?'ai':'paused');
+          if(result.duplicate)return Boolean(bridge);
+          const {contact,conversation:conv,message,parsed,should_send_welcome:shouldSendWelcome}=result;
+          const {phone,name,kind,content}=parsed;
           const rules=await sql`select * from automation_rules
             where organization_id=${org} and enabled=true
             order by created_at`;
@@ -130,7 +75,7 @@ export async function POST(req:Request){
           let replied=false;
           for(const rule of rules){
             const matches=rule.trigger==='new_contact'
-              ?!existing.length
+              ?result.new_contact
               :rule.trigger==='keyword'
                 ?String(content).toLowerCase().includes(rule.match.toLowerCase())
                 :(await sql`select 1
@@ -164,7 +109,7 @@ export async function POST(req:Request){
               await sql`insert into messages(organization_id,conversation_id,direction,body,sender_name,payload)
                 values(
                   ${org},${conv.id},'out',${rule.value},'Open Chet AI',
-                  ${sql.json({type:'text',text:{body:rule.value},expected_version:conv.version+1})}
+                  ${sql.json({type:'text',text:{body:rule.value},expected_version:conv.version})}
                 )`;
               replied=true;
             }
@@ -177,10 +122,7 @@ export async function POST(req:Request){
               values(${org},${conv.id},${message.id},${fresh.version})`;
           }
 
-          await sql`insert into notifications(organization_id,conversation_id,body)
-            values(${org},${conv.id},${`New message from ${name}`})`;
-
-          return fresh.mode==='ai'
+          const event=fresh.mode==='ai'
             ?{
                 organization_id:org,
                 whatsapp_account_id:account.id,
@@ -198,24 +140,16 @@ export async function POST(req:Request){
                 raw_message:m
               }
             :null;
+          if(event&&bridge){await sql`insert into n8n_deliveries(organization_id,conversation_id,meta_message_id,payload)
+            values(${org},${conv.id},${m.id},${sql.json(event)}) on conflict(meta_message_id) do nothing`;return true;}
+          return false;
         });
 
-        if(bridgeEvent&&bridge){
-          try{
-            const delivered=await forwardInboundToN8n(bridgeEvent,bridge);
-            if(delivered&&bridgeEvent.should_send_welcome){
-              await db()`update conversations
-                set welcome_sent=true,updated_at=now()
-                where id=${bridgeEvent.conversation_id}
-                  and organization_id=${bridgeEvent.organization_id}`;
-            }
-          }catch(error){
-            console.warn('n8n bridge delivery failed',error instanceof Error?error.message:'unknown');
-          }
-        }
+        if(bridgeEvent&&bridge)await dispatchN8nDelivery(m.id,org);
       }
 
       for(const s of value.statuses||[])await db().begin(async sql=>{
+        await sql`select pg_advisory_xact_lock(hashtext(${s.id}))`;
         const errorCode=s.errors?.[0]?.code?.toString()||null;
         // Meta can deliver a status webhook milliseconds before n8n syncs the outbound
         // message into Open Chet. Store the event first so that race is never lost.
@@ -242,7 +176,7 @@ export async function POST(req:Request){
           set status=${status}
           where message_id=${message.id} and organization_id=${message.organization_id}`;
 
-        if(status==='failed'){
+        if(status==='failed'&&message.status!=='failed'){
           await sql`insert into notifications(organization_id,body)
             values(${message.organization_id},${errorCode?`A WhatsApp message failed (Meta ${errorCode}). Open the inbox to review.`:'A WhatsApp message failed. Open the inbox to review.'})`;
         }
