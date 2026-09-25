@@ -1,0 +1,17 @@
+name: WhatsApp token replacement validation
+on:
+  push:
+    branches: [whatsapp-token-replace-20260925]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --exclude tests/auth.test.ts
+      - run: npm run lint
