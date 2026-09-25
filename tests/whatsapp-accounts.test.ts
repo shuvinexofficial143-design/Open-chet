@@ -84,7 +84,7 @@ describe('WhatsApp connection API security',()=>{
   });
 
   it('automatically makes the first active connection the default',()=>{
-    expect(accountsApi).toContain('${Number(count.count)===0}');
+    expect(accountsApi).toContain('Number(count.count)===0');
   });
 });
 
@@ -106,7 +106,9 @@ describe('WhatsApp delivery status and n8n reply routing',()=>{
   });
 
   it('stores status events before lookup and exposes Meta failure codes',()=>{
-    expect(webhookRoute.indexOf('insert into message_status_events')).toBeLessThan(webhookRoute.indexOf('from messages'));
+    const insertIndex=webhookRoute.indexOf('insert into message_status_events');
+    expect(insertIndex).toBeGreaterThan(-1);
+    expect(insertIndex).toBeLessThan(webhookRoute.indexOf('from messages',insertIndex));
     expect(replyRoute).toContain('select status,error_code');
     expect(replyRoute).toContain('error_code:syncedErrorCode');
     expect(bootstrapRoute).toContain('meta_error_code');
