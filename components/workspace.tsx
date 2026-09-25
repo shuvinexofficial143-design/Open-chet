@@ -338,6 +338,7 @@ export default function Workspace() {
 
   const conversation = data.conversations.find((item) => item.id === selected);
   const contact = data.contacts.find((item) => item.id === conversation?.contact_id);
+  const conversationAccount = data.connection?.whatsapp_accounts?.find((account) => account.id === conversation?.whatsapp_account_id);
   const messagingWindowOpen = messagingOpen(conversation?.last_inbound_at || null);
   const manager = canManage(data.role);
   const admin = canAdmin(data.role);
@@ -380,10 +381,11 @@ export default function Workspace() {
           <div className="search chat-list-search"><Search size={18}/><input placeholder="Search chats…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
           <div className="conversation-scroll">{visibleConversations.map((item) => {
             const person = data.contacts.find((candidate) => candidate.id === item.contact_id);
+            const account = data.connection?.whatsapp_accounts?.find((candidate) => candidate.id === item.whatsapp_account_id);
             const displayName = person?.name || person?.phone || 'Unknown contact';
             return <button key={item.id} className={`conversation ${selected === item.id ? 'selected' : ''}`} onClick={() => openConversation(item.id)} aria-label={`${displayName} ${item.preview}`}>
               <span className={`avatar color-${data.contacts.findIndex((candidate) => candidate.id === item.contact_id) % 4}`}>{initials(displayName)}</span>
-              <div className="conversation-copy"><div className="conversation-title"><strong>{displayName}</strong><time>{time(item.updated_at)}</time></div><div className="conversation-preview"><p>{item.preview || 'Start a conversation'}</p>{item.unread > 0 ? <b className="unread">{item.unread}</b> : null}</div></div>
+              <div className="conversation-copy"><div className="conversation-title"><strong>{displayName}</strong><time>{time(item.updated_at)}</time></div><div className="conversation-preview"><p>{item.preview || 'Start a conversation'}{account ? <small>{` · ${account.display_phone_number || account.label}`}</small> : null}</p>{item.unread > 0 ? <b className="unread">{item.unread}</b> : null}</div></div>
             </button>;
           })}{!visibleConversations.length ? <div className="empty"><Search/><h3>No chats found</h3></div> : null}</div>
         </section>
@@ -391,7 +393,7 @@ export default function Workspace() {
           <header className="chat-header">
             <button className="icon-button mobile-back" aria-label="Back to chats" onClick={() => setMobileChat(false)}><ArrowLeft/></button>
             <span className="avatar">{initials(contact.name || contact.phone)}</span>
-            <button className="contact-heading" onClick={() => setContactInfoId(contact.id)}><strong>{contact.name || contact.phone}</strong><small>{contact.company || contact.phone}</small></button>
+            <button className="contact-heading" onClick={() => setContactInfoId(contact.id)}><strong>{contact.name || contact.phone}</strong><small>{contact.company || contact.phone}{conversationAccount ? ` · via ${conversationAccount.display_phone_number || conversationAccount.label}` : ''}</small></button>
             <button className="icon-button" aria-label="Search in conversation" onClick={() => setShowSearch((value) => !value)}><Search size={19}/></button>
             <div className="chat-menu-wrap"><button className="icon-button" aria-label="More conversation actions" aria-expanded={showChatMenu} onClick={() => setShowChatMenu((value) => !value)}><MoreVertical size={20}/></button>
               {showChatMenu ? <div className="chat-menu" role="menu">
@@ -419,7 +421,7 @@ export default function Workspace() {
                 {message.kind === 'catalogue' && Array.isArray(message.payload?.products) && message.payload.products.length
                   ? <div className="catalogue-message"><p>{message.body || '🛍️ Product catalogue'}</p><div className="catalogue-message-grid">{message.payload.products.map((product: Row) => <ProductMessage key={String(product.id)} product={productSnapshot(product)}/>)}</div></div>
                   : message.kind === 'product' && message.product_snapshot ? <ProductMessage product={message.product_snapshot}/> : <p>{message.body}</p>}
-                <div className="message-meta"><time>{time(message.created_at)}</time>{message.direction === 'out' ? message.status === 'read' ? <CheckCheck size={15} className="read"/> : message.status === 'delivered' ? <CheckCheck size={15}/> : message.status === 'sent' ? <Check size={15}/> : message.status === 'demo' ? <span>Demo</span> : <span>{message.status}</span> : null}</div>
+                <div className="message-meta"><time>{time(message.created_at)}</time>{message.direction === 'out' ? message.status === 'failed' ? <span title={message.meta_error_code ? `Meta error ${message.meta_error_code}` : 'WhatsApp delivery failed'}>failed{message.meta_error_code ? ` · Meta ${message.meta_error_code}` : ''}</span> : message.status === 'read' ? <CheckCheck size={15} className="read"/> : message.status === 'delivered' ? <CheckCheck size={15}/> : message.status === 'sent' ? <Check size={15}/> : message.status === 'demo' ? <span>Demo</span> : <span>{message.status}</span> : null}</div>
               </div></div>
             </div>)}<div ref={messageEnd}/>
           </div>
