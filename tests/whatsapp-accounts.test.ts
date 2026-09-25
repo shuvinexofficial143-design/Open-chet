@@ -141,3 +141,21 @@ describe('WhatsApp health endpoint security',()=>{
     expect(route).toContain('Owner or admin access required');
   });
 });
+
+describe('WhatsApp token replacement',()=>{
+  const accountsApi=readFileSync(new URL('../app/api/whatsapp-accounts/route.ts',import.meta.url),'utf8');
+  const workspace=readFileSync(new URL('../components/workspace.tsx',import.meta.url),'utf8');
+  it('verifies and encrypts a replacement token for the saved phone and WABA',()=>{
+    expect(accountsApi).toContain("'token'");
+    expect(accountsApi).toContain("if(value.action==='token')");
+    expect(accountsApi).toContain('verifyWhatsAppConnection(accessToken,account.phone_number_id,account.business_account_id)');
+    expect(accountsApi).toContain('access_token_ciphertext=');
+    expect(accountsApi).toContain('access_token_iv=');
+    expect(accountsApi).toContain('access_token_tag=');
+  });
+  it('offers token replacement without deleting the WhatsApp account',()=>{
+    expect(workspace).toContain('Update token');
+    expect(workspace).toContain('Verify and replace token');
+    expect(workspace).toContain('2302630346983637');
+  });
+});

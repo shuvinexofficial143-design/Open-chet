@@ -11,7 +11,7 @@ const label=z.string().trim().min(1).max(120);
 export async function POST(req:Request){try{
   const c=await context(req);
   if(!canAdmin(c.role))throw new HttpError(403,'Owner or admin access required');
-  const value=z.object({action:z.enum(['add','label','default','active']),id:id.optional(),label:label.optional(),phone_number_id:identifier.optional(),business_account_id:identifier.optional(),access_token:z.string().trim().min(20).max(10000).optional(),is_active:z.boolean().optional(),make_default:z.boolean().optional()}).parse(await body(req));
+  const value=z.object({action:z.enum(['add','label','default','active','token']),id:id.optional(),label:label.optional(),phone_number_id:identifier.optional(),business_account_id:identifier.optional(),access_token:z.string().trim().min(20).max(10000).optional(),is_active:z.boolean().optional(),make_default:z.boolean().optional()}).parse(await body(req));
   if(value.action==='add'){
     const input=z.object({label,phone_number_id:identifier,business_account_id:identifier,access_token:z.string().trim().min(20).max(10000)}).parse(value);
     let metadata:{display_phone_number:string;verified_name:string};
@@ -25,6 +25,26 @@ export async function POST(req:Request){try{
       if(makeDefault)await sql`update whatsapp_accounts set is_default=false,updated_at=now() where organization_id=${c.org} and is_default=true`;
       await sql`insert into whatsapp_accounts(organization_id,label,phone_number_id,business_account_id,display_phone_number,verified_name,access_token_ciphertext,access_token_iv,access_token_tag,is_active,is_default) values(${c.org},${input.label},${input.phone_number_id},${input.business_account_id},${metadata.display_phone_number},${metadata.verified_name},${encrypted.access_token_ciphertext},${encrypted.access_token_iv},${encrypted.access_token_tag},true,${makeDefault})`;
     });
+  }
+  if(value.action==='token'){
+    const accountId=id.parse(value.id);
+    const accessToken=z.string().trim().min(20).max(10000).parse(value.access_token);
+    const [account]=await db()`select id,phone_number_id,business_account_id
+      from whatsapp_accounts
+      where id=${accountId} and organization_id=${c.org}`;
+    if(!account)throw new HttpError(404,'WhatsApp connection not found');
+    let metadata:{display_phone_number:string;verified_name:string};
+    try{metadata=await verifyWhatsAppConnection(accessToken,account.phone_number_id,account.business_account_id)}catch{throw new HttpError(400,'This access token cannot access the saved Phone Number ID and WABA')}
+    let encrypted;
+    try{encrypted=encryptAccessToken(accessToken)}catch{throw new HttpError(503,'WhatsApp token encryption is not configured correctly. Check WHATSAPP_TOKEN_ENCRYPTION_KEY and redeploy.')}
+    await db()`update whatsapp_accounts
+      set access_token_ciphertext=${encrypted.access_token_ciphertext},
+          access_token_iv=${encrypted.access_token_iv},
+          access_token_tag=${encrypted.access_token_tag},
+          display_phone_number=${metadata.display_phone_number},
+          verified_name=${metadata.verified_name},
+          updated_at=now()
+      where id=${accountId} and organization_id=${c.org}`;
   }
   if(value.action==='label'){
     const accountId=id.parse(value.id),name=label.parse(value.label);
