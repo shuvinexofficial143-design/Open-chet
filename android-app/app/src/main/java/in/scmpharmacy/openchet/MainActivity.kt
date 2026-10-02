@@ -4,7 +4,10 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -18,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private var systemBackCallback: OnBackInvokedCallback? = null
 
     companion object {
         private const val HOME_URL = "https://open-chet.vercel.app/"
@@ -74,6 +78,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            systemBackCallback = OnBackInvokedCallback { handleBackPress() }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                systemBackCallback!!
+            )
+        }
+
         if (savedInstanceState == null) {
             webView.loadUrl(HOME_URL)
         } else {
@@ -110,8 +122,9 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
+    private fun handleBackPress() {
+        if (isFinishing) return
+
         webView.evaluateJavascript(
             "(function(){try{return window.openChetNativeBack ? window.openChetNativeBack() : false;}catch(e){return false;}})();"
         ) { handled ->
@@ -122,12 +135,23 @@ class MainActivity : AppCompatActivity() {
             if (webView.canGoBack()) {
                 webView.goBack()
             } else {
-                super.onBackPressed()
+                finish()
             }
         }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            handleBackPress()
+        }
+    }
+
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            systemBackCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
+            systemBackCallback = null
+        }
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
         webView.destroy()
