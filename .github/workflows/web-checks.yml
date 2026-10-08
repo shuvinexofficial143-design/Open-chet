@@ -24,3 +24,4 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test tests/mobile-back.spec.ts --project=mobile
+      - run: npx playwright test tests/chat-media.spec.ts --project=mobile --project=desktop
