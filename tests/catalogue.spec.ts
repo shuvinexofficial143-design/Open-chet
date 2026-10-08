@@ -8,7 +8,7 @@ const primaryNavigation = (page: import('@playwright/test').Page, projectName: s
   projectName === 'mobile' ? page.locator('.mobile-nav') : page.locator('.mvp-sidebar nav');
 
 test('MVP navigation stays focused and mobile chats start immediately with search', async ({page}, testInfo) => {
-  await expect(page.locator('.mobile-nav button span')).toHaveText(['Chats', 'Contacts', 'Tools', 'More']);
+  await expect(page.locator('.mobile-nav button span')).toHaveText(['Chats', 'Contacts', 'More']);
   await expect(page.locator('.mobile-nav select')).toHaveCount(0);
   await expect(page.locator('.mobile-nav')).not.toContainText('Campaigns');
   await expect(page.locator('.mobile-nav')).not.toContainText('Templates');
@@ -20,13 +20,9 @@ test('MVP navigation stays focused and mobile chats start immediately with searc
   }
 
   const navigation = primaryNavigation(page, testInfo.project.name);
-  await navigation.getByRole('button', {name: /Tools/}).click();
-  await expect(page.getByRole('heading', {name: 'Tools'})).toBeVisible();
-  await expect(page.locator('.tools-grid > button')).toHaveCount(4);
-  await expect(page.locator('.tools-grid')).toContainText('Catalogue');
-  await expect(page.locator('.tools-grid')).toContainText('Quick Replies');
-  await expect(page.locator('.tools-grid')).toContainText('Import Contacts');
-  await expect(page.locator('.tools-grid')).toContainText('Media / Documents');
+  // The unused Tools section is gone from desktop and mobile navigation.
+  await expect(navigation.getByRole('button', {name: 'Tools', exact: true})).toHaveCount(0);
+  await expect(page.locator('.tools-grid')).toHaveCount(0);
 
   await navigation.getByRole('button', {name: /More/}).click();
   await expect(page.getByRole('heading', {name: 'More'})).toBeVisible();
@@ -46,7 +42,6 @@ test('chat hides internal authors, quick replies work, and human takeover persis
 
   await page.getByRole('button', {name: 'More conversation actions'}).click();
   await expect(page.getByRole('menu')).toContainText('Contact Info');
-  await expect(page.getByRole('menu')).toContainText('Media / Documents');
   await expect(page.getByRole('menu')).toContainText('Catalogue');
   await page.getByRole('button', {name: 'Take Over', exact: true}).click();
   await page.getByRole('button', {name: 'More conversation actions'}).click();
@@ -121,22 +116,21 @@ test('catalogue uses vertical categories, horizontal six-product pages, and a de
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test('contacts open contact info and catalogue management exposes edit only in details', async ({page}, testInfo) => {
+test('contacts and the in-chat catalogue still work without the Tools page', async ({page}, testInfo) => {
   const navigation = primaryNavigation(page, testInfo.project.name);
   await navigation.getByRole('button', {name: /Contacts/}).click();
   await page.getByRole('button', {name: /Dr. Arjun Mehta/}).click();
   const contactInfo = page.getByRole('complementary', {name: 'Contact Info'});
   await expect(contactInfo).toBeVisible();
-  await expect(contactInfo).toContainText('Media, Links & Documents');
   await expect(contactInfo).toContainText('Tags');
   await expect(page.getByRole('button', {name: 'Message', exact: true})).toBeVisible();
   await page.getByRole('button', {name: 'Close contact info'}).click();
 
-  await navigation.getByRole('button', {name: /Tools/}).click();
-  await page.getByRole('button', {name: /Catalogue.*Browse and manage/}).click();
-  const dialog = page.getByRole('dialog').filter({has: page.getByRole('heading', {name: 'Catalogue', exact: true})});
-  await expect(dialog.getByRole('button', {name: 'Add product'})).toBeVisible();
-  await dialog.getByRole('button', {name: 'Details for Ceftriaxone'}).click();
-  await expect(dialog.getByRole('button', {name: 'Edit product'})).toBeVisible();
-  await expect(dialog.getByRole('button', {name: 'Send to chat'})).toHaveCount(0);
+  await navigation.getByRole('button', {name: /Chats/}).click();
+  await page.locator('.conversation').filter({hasText:'Dr. Arjun Mehta'}).click();
+  await page.getByRole('button', {name: 'Open catalogue'}).click();
+  const dialog = page.getByRole('dialog').filter({has: page.getByRole('heading', {name: 'Share catalogue'})});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', {name: 'Details for Ceftriaxone'})).toBeVisible();
+  await expect(navigation.getByRole('button', {name: 'Tools'})).toHaveCount(0);
 });
