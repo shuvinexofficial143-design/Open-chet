@@ -11,7 +11,10 @@ Production URL: https://open-chet.vercel.app/
 - Keeps normal WebView cookies/session storage for login persistence.
 - Supports the system file picker for attachments.
 - Opens non-Open-Chet links in the user's default browser/app.
-- Android Back navigates WebView history before closing the app.
+- Android system Back (button or edge gesture) closes an open overlay first, returns an open chat to the chat list, and navigates back one app section at a time. The header arrow behaves the same way.
+- In the main chat list, a single accidental Back never exits. Press Back twice within 2 seconds to exit.
+- Browser/PWA Back also returns from an open chat to the chat list using a same-page history entry.
+- Install the newly built **1.0.3** APK to get the improved native system-Back handler; website navigation changes update automatically.
 
 ## Build
 
