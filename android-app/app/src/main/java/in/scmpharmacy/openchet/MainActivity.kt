@@ -4,10 +4,8 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
-import android.os.Build
+import android.os.SystemClock
 import android.os.Bundle
-import android.window.OnBackInvokedCallback
-import android.window.OnBackInvokedDispatcher
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -16,12 +14,14 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
-    private var systemBackCallback: OnBackInvokedCallback? = null
+    private var backInProgress = false
+    private var lastExitPromptAt = 0L
 
     companion object {
         private const val HOME_URL = "https://open-chet.vercel.app/"
@@ -78,13 +78,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            systemBackCallback = OnBackInvokedCallback { handleBackPress() }
-            onBackInvokedDispatcher.registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-                systemBackCallback!!
-            )
-        }
+        // Android 7–15+: register one lifecycle-aware handler for the system Back
+        // button and the edge-swipe gesture, instead of relying on WebView history.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = handleBackPress()
+        })
 
         if (savedInstanceState == null) {
             webView.loadUrl(HOME_URL)
@@ -123,35 +121,50 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleBackPress() {
-        if (isFinishing) return
+        if (isFinishing || isDestroyed || backInProgress) return
+        backInProgress = true
 
+        // The React workspace handles one in-app step first: overlay -> chat list
+        // -> tool section -> root. WebView navigation is only the fallback.
         webView.evaluateJavascript(
-            "(function(){try{return window.openChetNativeBack ? window.openChetNativeBack() : false;}catch(e){return false;}})();"
+            "(function(){try{return window.openChetNativeBack ? Boolean(window.openChetNativeBack()) : false;}catch(e){return false;}})();"
         ) { handled ->
+            backInProgress = false
+            if (isFinishing || isDestroyed) return@evaluateJavascript
             if (handled == "true") {
+                lastExitPromptAt = 0L
                 return@evaluateJavascript
             }
 
-            if (webView.canGoBack()) {
-                webView.goBack()
-            } else {
-                finish()
-            }
-        }
-    }
+            // Never accidentally return from the inbox to the login screen.
+            val history = webView.copyBackForwardList()
+            val previous = if (history.currentIndex > 0) {
+                history.getItemAtIndex(history.currentIndex - 1)?.url
+            } else null
+            val safePreviousPage = previous?.let { address ->
+                val uri = Uri.parse(address)
+                uri.host == APP_HOST && uri.path != "/login" && uri.path != "/"
+            } ?: false
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            handleBackPress()
+            if (safePreviousPage) {
+                lastExitPromptAt = 0L
+                webView.goBack()
+                return@evaluateJavascript
+            }
+
+            // At the top-level Inbox, a single accidental Back must not close
+            // the app. Allow an intentional double-back within two seconds.
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastExitPromptAt <= 2000L) {
+                finish()
+            } else {
+                lastExitPromptAt = now
+                Toast.makeText(this, "Press Back again to exit Open Chet", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
     override fun onDestroy() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            systemBackCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
-            systemBackCallback = null
-        }
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
         webView.destroy()
