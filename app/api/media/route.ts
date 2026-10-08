@@ -16,9 +16,13 @@ export async function GET(req:Request){
     if(!row?.media_id)throw new HttpError(404,'Media not found');
     const response=await downloadWhatsAppMedia(row as WhatsAppAccount,row.media_id);
     const mime=(response.headers.get('content-type')||'application/octet-stream').split(';')[0].toLowerCase();
+    const inlineMimeTypes:Record<string,string[]> = {
+      image:['image/jpeg','image/png','image/webp'],
+      audio:['audio/ogg','audio/mpeg','audio/mp4','audio/aac','audio/amr'],
+      video:['video/mp4','video/3gpp'],
+    };
     const inline=url.searchParams.get('inline')==='1'
-      && row.kind==='image'
-      && ['image/jpeg','image/png','image/webp'].includes(mime);
+      && (inlineMimeTypes[String(row.kind)]||[]).includes(mime);
     return new Response(response.body,{
       headers:{
         'Content-Type':mime,
