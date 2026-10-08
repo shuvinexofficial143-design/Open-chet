@@ -12,6 +12,7 @@ import {
   UserRound, Users, X, Zap,
 } from 'lucide-react';
 import CataloguePanel, {ProductMessage} from './catalogue-panel';
+import ChatMedia, {isMediaPlaceholder} from './chat-media';
 import Dialog from './dialog';
 import {catalogueDemoProducts, productSnapshot} from '@/lib/catalogue';
 import {canAdmin, canManage, messagingOpen, normalizePhone, templateVariables} from '@/lib/domain';
@@ -456,7 +457,7 @@ export default function Workspace() {
 
       {page === 'Chats' ? <main className="inbox mvp-inbox">
         <section className="chat-list">
-          <div className="mobile-chats-heading"><strong>Chats</strong><button className="icon-button" aria-label="New conversation" onClick={() => setDialog({type: 'new-chat'})}><Plus/></button></div>
+          <div className="mobile-chats-heading"><span><strong>Messages</strong><small>{data.conversations.length} conversations</small></span><button className="icon-button new-conversation-button" aria-label="New conversation" onClick={() => setDialog({type: 'new-chat'})}><Plus size={20}/></button></div>
           <div className="search chat-list-search"><Search size={18}/><input placeholder="Search chats…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
           <div className="conversation-scroll">{visibleConversations.map((item) => {
             const person = data.contacts.find((candidate) => candidate.id === item.contact_id);
@@ -464,7 +465,7 @@ export default function Workspace() {
             const displayName = person?.name || person?.phone || 'Unknown contact';
             return <button key={item.id} className={`conversation ${selected === item.id ? 'selected' : ''}`} onClick={() => openConversation(item.id)} aria-label={`${displayName} ${item.preview}`}>
               <span className={`avatar color-${data.contacts.findIndex((candidate) => candidate.id === item.contact_id) % 4}`}>{initials(displayName)}</span>
-              <div className="conversation-copy"><div className="conversation-title"><strong>{displayName}</strong><time>{time(item.updated_at)}</time></div><div className="conversation-preview"><p>{item.preview || 'Start a conversation'}{account ? <small>{` · ${account.display_phone_number || account.label}`}</small> : null}</p>{item.unread > 0 ? <b className="unread">{item.unread}</b> : null}</div></div>
+              <div className="conversation-copy"><div className="conversation-title"><strong>{displayName}</strong><time>{time(item.updated_at)}</time></div><div className="conversation-preview"><p>{item.preview === '[image]' ? '📷 Photo' : item.preview === '[video]' ? '🎬 Video' : item.preview === '[audio]' ? '🎤 Voice message' : (item.preview || 'Start a conversation')}{account ? <small>{` · ${account.display_phone_number || account.label}`}</small> : null}</p>{item.unread > 0 ? <b className="unread">{item.unread}</b> : null}</div></div>
             </button>;
           })}{data.has_more?<button className="secondary load-more" onClick={async()=>{inboxPages.current++;await reload().catch(()=>notify('More chats could not be loaded'));}}>Load more chats</button>:null}{!visibleConversations.length ? <div className="empty"><Search/><h3>No chats found</h3></div> : null}</div>
         </section>
@@ -494,15 +495,13 @@ export default function Workspace() {
             {messages.map((message, index) => <div key={message.id}>
               {(index === 0 || new Date(messages[index - 1].created_at).toDateString() !== new Date(message.created_at).toDateString()) ? <div className="date-divider">{new Date(message.created_at).toLocaleDateString('en-IN', {day: 'numeric', month: 'long'})}</div> : null}
               <div className={`message-row ${message.direction}`}><div className={`message-bubble ${message.direction}`}>
-                {message.kind === 'image' && message.media_url?.startsWith('blob:') ? <img className="message-image" src={message.media_url} alt={message.body || 'Attachment'}/> : null}
-                {message.kind === 'video' && message.media_url?.startsWith('blob:') ? <video controls src={message.media_url}/> : null}
-                {message.kind === 'audio' && message.media_url?.startsWith('blob:') ? <audio controls src={message.media_url}/> : null}
-                {['image', 'document', 'video', 'audio'].includes(message.kind) && !message.media_url ? <button className="attachment-link" onClick={() => downloadMedia(message)}><Download size={18}/>Open {message.kind}</button> : null}
+                {['image','document','video','audio'].includes(message.kind) ? <ChatMedia message={message} onDownload={() => downloadMedia(message)}/> : null}
                 {message.kind === 'template' ? <span className="template-label"><FileText size={12}/>Template message</span> : null}
                 {message.kind === 'catalogue' && Array.isArray(message.payload?.products) && message.payload.products.length
                   ? <div className="catalogue-message"><p>{message.body || '🛍️ Product catalogue'}</p><div className="catalogue-message-grid">{message.payload.products.map((product: Row) => <ProductMessage key={String(product.id)} product={productSnapshot(product)}/>)}</div></div>
-                  : message.kind === 'product' && message.product_snapshot ? <ProductMessage product={message.product_snapshot}/> : <p>{message.body}</p>}
-                <div className="message-meta">{!demo?<span title={message.phone_number_id?('Phone Number ID '+message.phone_number_id):'Historical account route unknown'}>{data.connection?.whatsapp_accounts.find(a=>a.id===message.whatsapp_account_id)?.display_phone_number||message.phone_number_id||'Legacy route unknown'}</span>:null}<time>{time(message.created_at)}</time>{message.direction === 'out' ? message.status === 'failed' ? <span title={message.meta_error_code ? `Meta error ${message.meta_error_code}` : 'WhatsApp delivery failed'}>failed{message.meta_error_code ? ` · Meta ${message.meta_error_code}` : ''}</span> : message.status === 'read' ? <CheckCheck size={15} className="read"/> : message.status === 'delivered' ? <CheckCheck size={15}/> : message.status === 'sent' ? <Check size={15}/> : message.status === 'demo' ? <span>Demo</span> : <span>{message.status}</span> : null}</div>
+                  : message.kind === 'product' && message.product_snapshot ? <ProductMessage product={message.product_snapshot}/>
+                  : ['image','document','video','audio'].includes(message.kind) && isMediaPlaceholder(message.body, message.kind) ? null : <p>{message.body}</p>}
+                <div className="message-meta">{!demo?<span className="message-route" title={message.phone_number_id?('Phone Number ID '+message.phone_number_id):'Historical account route unknown'}>{data.connection?.whatsapp_accounts.find(a=>a.id===message.whatsapp_account_id)?.display_phone_number||message.phone_number_id||'Legacy route unknown'}</span>:null}<time>{time(message.created_at)}</time>{message.direction === 'out' ? message.status === 'failed' ? <span title={message.meta_error_code ? `Meta error ${message.meta_error_code}` : 'WhatsApp delivery failed'}>failed{message.meta_error_code ? ` · Meta ${message.meta_error_code}` : ''}</span> : message.status === 'read' ? <CheckCheck size={15} className="read"/> : message.status === 'delivered' ? <CheckCheck size={15}/> : message.status === 'sent' ? <Check size={15}/> : message.status === 'demo' ? <span>Demo</span> : <span>{message.status}</span> : null}</div>
               </div></div>
             </div>)}<div ref={messageEnd}/>
           </div>
