@@ -454,11 +454,10 @@ export default function Workspace() {
           <div className="search chat-list-search"><Search size={18}/><input placeholder="Search chats…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
           <div className="conversation-scroll">{visibleConversations.map((item) => {
             const person = data.contacts.find((candidate) => candidate.id === item.contact_id);
-            const account = data.connection?.whatsapp_accounts?.find((candidate) => candidate.id === item.whatsapp_account_id);
             const displayName = person?.name || person?.phone || 'Unknown contact';
             return <button key={item.id} className={`conversation ${selected === item.id ? 'selected' : ''}`} onClick={() => openConversation(item.id)} aria-label={`${displayName} ${item.preview}`}>
               <span className={`avatar color-${data.contacts.findIndex((candidate) => candidate.id === item.contact_id) % 4}`}>{initials(displayName)}</span>
-              <div className="conversation-copy"><div className="conversation-title"><strong>{displayName}</strong><time>{time(item.updated_at)}</time></div><div className="conversation-preview"><p>{item.preview === '[image]' ? '📷 Photo' : item.preview === '[video]' ? '🎬 Video' : item.preview === '[audio]' ? '🎤 Voice message' : (item.preview || 'Start a conversation')}{account ? <small>{` · ${account.display_phone_number || account.label}`}</small> : null}</p>{item.unread > 0 ? <b className="unread">{item.unread}</b> : null}</div></div>
+              <div className="conversation-copy"><div className="conversation-title"><strong>{displayName}</strong><time>{time(item.updated_at)}</time></div><div className="conversation-preview"><p>{item.preview === '[image]' ? '📷 Photo' : item.preview === '[video]' ? '🎬 Video' : item.preview === '[audio]' ? '🎤 Voice message' : (item.preview || 'Start a conversation')}</p>{item.unread > 0 ? <b className="unread">{item.unread}</b> : null}</div></div>
             </button>;
           })}{data.has_more?<button className="secondary load-more" onClick={async()=>{inboxPages.current++;await reload().catch(()=>notify('More chats could not be loaded'));}}>Load more chats</button>:null}{!visibleConversations.length ? <div className="empty"><Search/><h3>No chats found</h3></div> : null}</div>
         </section>
@@ -466,7 +465,7 @@ export default function Workspace() {
           <header className="chat-header">
             <button className="icon-button mobile-back" aria-label="Back to chats" onClick={closeMobileChat}><ArrowLeft/></button>
             <span className="avatar">{initials(contact.name || contact.phone)}</span>
-            <button className="contact-heading" onClick={() => setContactInfoId(contact.id)}><strong>{contact.name || contact.phone}</strong><small>{contact.company || contact.phone}{conversationAccount ? ` · via ${conversationAccount.display_phone_number || conversationAccount.label}` : ''}</small></button>
+            <button className="contact-heading" onClick={() => setContactInfoId(contact.id)}><strong>{contact.name || contact.phone}</strong><small className="customer-phone">{contact.phone}</small></button>
             <button className="icon-button" aria-label="Search in conversation" onClick={() => setShowSearch((value) => !value)}><Search size={19}/></button>
             <div className="chat-menu-wrap"><button className="icon-button" aria-label="More conversation actions" aria-expanded={showChatMenu} onClick={() => setShowChatMenu((value) => !value)}><MoreVertical size={20}/></button>
               {showChatMenu ? <div className="chat-menu" role="menu">

@@ -281,3 +281,30 @@
   .mvp-app .mobile-nav>button{font-size:11px;font-weight:600}
 }
 @media(prefers-reduced-motion:reduce){.chat-photo-hover{transition:none}}
+
+
+/* Make every customer a distinct row in the inbox, not a merged block.
+   The selected row keeps its green edge and still has a visible divider. */
+.mvp-app .mvp-inbox .conversation {
+  border-bottom:1px solid #ccd8de;
+  box-shadow:inset 0 -1px 0 #ffffffa3;
+  min-height:82px;
+}
+.mvp-app .mvp-inbox .conversation.selected {
+  border-bottom-color:#b7d8d0;
+  box-shadow:inset 0 -1px 0 #d5e9e3;
+}
+.mvp-app .mvp-inbox .conversation:last-child {border-bottom:0}
+.mvp-app .chat-header .customer-phone {
+  color:#687f89;
+  font-size:12px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+@media(max-width:700px){
+  .mvp-app .mvp-inbox .conversation{min-height:78px;border-bottom-color:#cbd7dc}
+  .mvp-app .mvp-inbox .conversation.selected{border-bottom-color:#b7d8d0}
+  .mvp-app .chat-header .customer-phone{font-size:11px}
+}
