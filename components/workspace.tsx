@@ -167,7 +167,6 @@ export default function Workspace() {
   useEffect(() => {if (demo && data) localStorage.setItem('open-chet-demo-v1', JSON.stringify(data));}, [data, demo]);
   useEffect(() => {
     if (!data || demo) return;
-    const org = data.organization_id;
     let timer:number|undefined;
     const refresh=()=>{window.clearTimeout(timer);timer=window.setTimeout(()=>reload().catch(()=>notify('Inbox refresh failed. Reconnecting…')),150);};
     // The password session is HTTP-only; refresh through authenticated server APIs.
