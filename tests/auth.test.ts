@@ -1,123 +1,113 @@
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import type {SupabaseClient} from '@supabase/supabase-js';
-import {describe, expect, it, vi} from 'vitest';
-import {
-  authErrorMessage,
-  DEFAULT_COUNTRY_CODE,
-  countries,
-  normalizePhoneForOtp,
-  OTP_RESEND_SECONDS,
-  requestPhoneOtp,
-  requestVoiceOtp,
-  resendPhoneOtp,
-  signOutPhoneSession,
-  validateOtp,
-  verifyPhoneOtp,
-  verifyVoiceOtp,
-} from '../lib/phone-auth';
+import {createClient} from '@supabase/supabase-js';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {POST} from '../app/api/auth/password/route';
+import {signOutSession} from '../lib/auth-session';
+
+vi.mock('@supabase/supabase-js', () => ({createClient: vi.fn()}));
 
 const loginSource = readFileSync(new URL('../app/login/page.tsx', import.meta.url), 'utf8');
+const routeSource = readFileSync(new URL('../app/api/auth/password/route.ts', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(new URL('../components/workspace.tsx', import.meta.url), 'utf8');
-const voiceRouteSource = readFileSync(new URL('../app/api/auth/voice-otp/route.ts', import.meta.url), 'utf8');
 
-function clientWith(auth: Record<string, unknown>) {
-  return {auth} as unknown as SupabaseClient;
+function request(password: unknown) {
+  return new Request('https://example.com/api/auth/password', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({password}),
+  });
 }
 
-describe('Phone OTP authentication', () => {
-  it('shows a phone number field on the login page', () => {
-    expect(loginSource).toContain('name="mobile"');
-    expect(loginSource).toContain('type="tel"');
+function mockAuthReply(reply: unknown) {
+  const signInWithPassword = vi.fn().mockResolvedValue(reply);
+  vi.mocked(createClient).mockReturnValue({
+    auth: {signInWithPassword},
+  } as unknown as ReturnType<typeof createClient>);
+  return signInWithPassword;
+}
+
+beforeEach(() => {
+  vi.stubEnv('OPEN_CHET_LOGIN_PHONE', '+919111111111');
+  vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co');
+  vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'public-test-key');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.clearAllMocks();
+});
+
+describe('Password-only owner authentication', () => {
+  it('shows one password field, without SMS or voice OTP controls', () => {
+    expect(loginSource).toContain('name="password"');
+    expect(loginSource).toContain("type={showPassword ? 'text' : 'password'}");
+    expect(loginSource).not.toContain('name="mobile"');
+    expect(loginSource).not.toContain('name="otp"');
+    expect(loginSource).not.toContain('requestPhoneOtp');
+    expect(loginSource).not.toContain('requestVoiceOtp');
+    expect(loginSource).toContain("auth.setSession(");
   });
 
-  it('removes email and password authentication fields', () => {
-    expect(loginSource).not.toContain('type="email"');
-    expect(loginSource).not.toContain('type="password"');
-    expect(loginSource).not.toContain('signInWithPassword');
+  it('keeps the owner phone only in the server-side environment', () => {
+    expect(routeSource).toContain('process.env.OPEN_CHET_LOGIN_PHONE');
+    expect(loginSource).not.toContain('OPEN_CHET_LOGIN_PHONE');
+    expect(routeSource).toContain('signInWithPassword({phone, password: value.password})');
+    expect(routeSource).not.toContain('process.env.OPEN_CHET_LOGIN_PASSWORD');
   });
 
-  it('defaults to India +91', () => {
-    expect(DEFAULT_COUNTRY_CODE).toBe('+91');
-    expect(countries[0]).toMatchObject({code: '+91', label: 'India (+91)'});
-  });
-
-  it('normalizes Indian numbers to E.164', () => {
-    expect(normalizePhoneForOtp('9329354729')).toBe('+919329354729');
-    expect(normalizePhoneForOtp('+91 93293 54729')).toBe('+919329354729');
-    expect(() => normalizePhoneForOtp('12345')).toThrow('valid 10-digit');
-  });
-
-  it('requests an OTP when Continue is submitted', async () => {
-    const signInWithOtp = vi.fn().mockResolvedValue({data: {messageId: 'test'}, error: null});
-    await requestPhoneOtp(clientWith({signInWithOtp}), '+919329354729');
-    expect(signInWithOtp).toHaveBeenCalledWith({phone: '+919329354729', options: {shouldCreateUser: true}});
-  });
-
-  it('provides the OTP verification screen', () => {
-    expect(loginSource).toContain("step === 'otp'");
-    expect(loginSource).toContain('Verify your number');
-    expect(loginSource).toContain('6-digit OTP');
-  });
-
-  it('verifies a 6-digit SMS code', async () => {
-    const session = {access_token: 'test'};
-    const verifyOtp = vi.fn().mockResolvedValue({data: {session}, error: null});
-    expect(validateOtp('123456')).toBe('123456');
-    expect(() => validateOtp('12345')).toThrow('6-digit');
-    await verifyPhoneOtp(clientWith({verifyOtp}), '+919329354729', '123456');
-    expect(verifyOtp).toHaveBeenCalledWith({phone: '+919329354729', token: '123456', type: 'sms'});
-  });
-
-  it('offers a voice-call OTP fallback', async () => {
-    expect(loginSource).toContain('Call me with OTP');
-    expect(voiceRouteSource).toMatch(/Channel:\s*'call'/);
-
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ok: true}),
+  it('signs in the configured owner and returns a Supabase session', async () => {
+    const signInWithPassword = mockAuthReply({
+      data: {session: {access_token: 'access-token', refresh_token: 'refresh-token'}},
+      error: null,
     });
-    vi.stubGlobal('fetch', fetchMock);
-    await requestVoiceOtp('+919329354729');
-    expect(fetchMock).toHaveBeenCalledWith('/api/auth/voice-otp', expect.objectContaining({method: 'POST'}));
-    vi.unstubAllGlobals();
-  });
-
-  it('accepts a verified voice OTP session', async () => {
-    const setSession = vi.fn().mockResolvedValue({data: {session: {access_token: 'voice'}}, error: null});
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({access_token: 'access', refresh_token: 'refresh'}),
+    const response = await POST(request('strong unique password'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
     });
-    vi.stubGlobal('fetch', fetchMock);
-    const session = await verifyVoiceOtp(clientWith({setSession}), '+919329354729', '123456');
-    expect(session).toMatchObject({access_token: 'voice'});
-    expect(setSession).toHaveBeenCalledWith({access_token: 'access', refresh_token: 'refresh'});
-    vi.unstubAllGlobals();
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      phone: '+919111111111',
+      password: 'strong unique password',
+    });
   });
 
-  it('resends through Supabase after a cooldown', async () => {
-    const resend = vi.fn().mockResolvedValue({data: {}, error: null});
-    expect(OTP_RESEND_SECONDS).toBeGreaterThanOrEqual(30);
-    expect(loginSource).toContain('disabled={busy || cooldown > 0}');
-    await resendPhoneOtp(clientWith({resend}), '+919329354729');
-    expect(resend).toHaveBeenCalledWith({phone: '+919329354729', type: 'sms'});
+  it('rejects an incorrect password without returning tokens', async () => {
+    mockAuthReply({data: {session: null}, error: new Error('Invalid credentials')});
+    const response = await POST(request('wrong'));
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({error: 'Incorrect password. Please try again.'});
   });
 
-  it('checks for an existing authenticated session before showing login', () => {
-    expect(loginSource).toContain('auth.getSession()');
-    expect(loginSource).toContain("router.replace('/')");
+  it('rejects blank passwords', async () => {
+    const response = await POST(request(''));
+    expect(response.status).toBe(400);
+    expect(vi.mocked(createClient)).not.toHaveBeenCalled();
   });
 
-  it('signs out of Supabase and returns to phone login', async () => {
-    const signOut = vi.fn().mockResolvedValue({error: null});
-    await signOutPhoneSession(clientWith({signOut}));
-    expect(signOut).toHaveBeenCalledOnce();
+  it('fails closed without a configured owner identity', async () => {
+    vi.stubEnv('OPEN_CHET_LOGIN_PHONE', '');
+    const response = await POST(request('secret'));
+    expect(response.status).toBe(503);
+    expect(vi.mocked(createClient)).not.toHaveBeenCalled();
+  });
+
+  it('preserves first-login workspace setup and existing Supabase identity', () => {
+    expect(loginSource).toContain("setStep('setup')");
+    expect(loginSource).toContain("api('/api/bootstrap'");
+    expect(workspaceSource).toContain('signOutSession(browserDB())');
     expect(workspaceSource).toContain("router.replace('/login')");
   });
 
-  it('returns safe messages for common phone auth failures', () => {
-    expect(authErrorMessage(new Error('Token has expired'))).toContain('expired');
-    expect(authErrorMessage(new Error('Invalid phone number'))).toBe('Enter a valid mobile number.');
-    expect(authErrorMessage(new Error('Too many requests'))).toContain('Too many attempts');
+  it('revokes the Supabase session on sign out', async () => {
+    const signOut = vi.fn().mockResolvedValue({error: null});
+    await signOutSession({auth: {signOut}} as unknown as SupabaseClient);
+    expect(signOut).toHaveBeenCalledOnce();
+  });
+
+  it('removes the old voice OTP HTTP endpoint', () => {
+    expect(existsSync(new URL('../app/api/auth/voice-otp/route.ts', import.meta.url))).toBe(false);
   });
 });

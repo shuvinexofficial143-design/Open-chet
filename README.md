@@ -9,11 +9,25 @@ Business messaging MVP built with Next.js, React, TypeScript, Supabase and the o
 - AI on/pause, human takeover, resume AI, automatic pause on human reply and agent assignment.
 - Templates, quick replies, catalogue, basic campaigns, analytics and settings screens.
 - Explicit device-local demo mode; demo messages never reach WhatsApp.
-- Supabase phone OTP authentication and first-login workspace creation architecture.
+- Password-only owner login backed by the existing Supabase phone user and first-login workspace creation architecture.
 - Organization-scoped server operations, role checks, normalized migration and read-only client RLS policies.
 - Signed, multi-number WhatsApp webhook ingestion, message deduplication, delivery-status processing, media and per-WABA template integration.
 - Database-backed outbound queue and AI worker, version checks to invalidate stale AI responses.
 - PWA manifest, icons and a service worker that does not cache customer records.
+
+## Password-only owner login (no OTP)
+
+The login screen asks for **one password only**. It sends that password to `POST /api/auth/password` over HTTPS; the server uses `OPEN_CHET_LOGIN_PHONE` to authenticate the **existing** owner account with Supabase Auth. Supabase verifies the password and issues the same JWT session used by all existing organization-scoped APIs. This preserves the existing user ID, workspace membership, WhatsApp accounts, and customer data. No password, service-role key, or owner phone value is embedded in the browser bundle.
+
+**Before merging or deploying this change**:
+
+1. In Supabase Authentication → Users, identify the **existing Open Chet workspace owner's** phone and user UUID. Do not create a new user or change its ID.
+2. Set a strong, unique password (ideally 16+ characters) on that existing Supabase Auth user. If you cannot sign in through the old OTP flow, an administrator can use the **server-side only** `supabase.auth.admin.updateUserById(userId, {password})` method with the service-role key. Never perform this operation from client code, commit credentials, or paste the password into a public issue.
+3. Add `OPEN_CHET_LOGIN_PHONE=+<countrycode><number>` (E.164, e.g. +91 followed by 10 digits) in the deployment's **server environment**, along with the existing Supabase settings. The login password is **not** an environment variable; Supabase Auth manages it.
+4. Verify password login on an isolated preview deployment and confirm it opens the existing workspace with its conversations before merging to `main` or deploying to production.
+5. Configure API/WAF rate limiting and Supabase Auth rate limits appropriately for this public password endpoint. This is a single-owner entry point, not multi-user team authentication.
+
+The former SMS/voice OTP login UI and the voice-OTP API route are removed from this branch. Signing out still revokes the Supabase session. The local demonstration at `/?demo=1` remains isolated from live records and does not authenticate against the production workspace.
 
 ## Local development
 
@@ -24,14 +38,14 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:3000. With no Supabase public configuration, the app opens in local demo mode. `/login` provides sign-in when Supabase is configured. `/?demo=1` explicitly opens demo mode.
+Open http://localhost:3000. With no Supabase public configuration, the app opens in local demo mode. `/login` provides password-only owner sign-in when Supabase and `OPEN_CHET_LOGIN_PHONE` are configured. `/?demo=1` explicitly opens demo mode.
 
 ## Live integration setup
 
 Copy `.env.example` to `.env.local` and configure its documented values. Never commit credentials.
 
 1. Use a dedicated Supabase project and apply `supabase/migrations/20260916044512_initial_open_chet.sql` through your normal migration workflow. The migration expects Supabase's `auth` and `storage` schemas. Also apply the additive catalogue metadata migration in the same directory. It creates a private media bucket and enables Realtime for messages, conversations, notes and notifications when the publication exists.
-2. Set the Supabase public URL and publishable key, server-only service-role key and TLS PostgreSQL transaction-pooler `DATABASE_URL`. Enable Supabase Phone authentication and configure an SMS provider.
+2. Set the Supabase public URL and publishable key, server-only service-role key and TLS PostgreSQL transaction-pooler `DATABASE_URL`. For password login keep the existing phone-confirmed Supabase owner account, set its password securely using the Supabase Admin API, and configure `OPEN_CHET_LOGIN_PHONE` on the server. No SMS/voice provider is needed for sign-in.
 3. Generate a 32-byte `WHATSAPP_TOKEN_ENCRYPTION_KEY` (for example, `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`) and store it only as a server environment variable. Never rotate it without re-encrypting saved connection tokens.
 4. Configure the deployment-wide Meta app secret, supported Graph API version and a random webhook verification token. Add each Phone Number ID, WABA ID and access token inside **More → WhatsApp Connection**; tokens are verified and encrypted before storage.
 5. Register the HTTPS endpoint `/api/webhooks/whatsapp` with Meta. Subscribe to message and relevant template-status events. Template sync runs against the selected WhatsApp account.
