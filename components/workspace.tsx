@@ -177,6 +177,22 @@ export default function Workspace() {
   }, [data?.organization_id, demo]);
   useEffect(() => {messageEnd.current?.scrollIntoView({behavior: 'smooth'});}, [selected, data?.messages.length]);
 
+  // Browser/PWA and Android WebView both need a real in-page history entry when
+  // opening a chat. Otherwise Android Back can return to /login or exit the app.
+  useEffect(() => {
+    const onPopState = () => setMobileChat(false);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  function closeMobileChat() {
+    if (window.history.state?.openChetChatView === true) {
+      window.history.back();
+    } else {
+      setMobileChat(false);
+    }
+  }
+
   useEffect(() => {
     const w = window as any;
     w.openChetNativeBack = () => {
@@ -186,7 +202,7 @@ export default function Workspace() {
       if (showNotifications) { setShowNotifications(false); return true; }
       if (showChatMenu) { setShowChatMenu(false); return true; }
       if (showSearch) { setShowSearch(false); setChatSearch(''); return true; }
-      if (mobileChat) { setMobileChat(false); return true; }
+      if (mobileChat) { closeMobileChat(); return true; }
       if (page === 'Tools' && toolView !== 'home') { setToolView('home'); return true; }
       if (page === 'More' && moreView !== 'home') { setMoreView('home'); return true; }
       if (page !== 'Chats') { setPage('Chats'); setQuery(''); return true; }
@@ -243,6 +259,9 @@ export default function Workspace() {
 
   async function openConversation(id: string) {
     selectedRef.current=id;historyPages.current=1;setSelected(id);setRouteChoice('');
+    if (!mobileChat && window.matchMedia('(max-width: 700px)').matches && window.history.state?.openChetChatView !== true) {
+      window.history.pushState({...window.history.state, openChetChatView: true}, '');
+    }
     setMobileChat(true);
     setDraft('');
     setAttachment(null);
@@ -451,7 +470,7 @@ export default function Workspace() {
         </section>
         {conversation && contact ? <section className="chat-panel">
           <header className="chat-header">
-            <button className="icon-button mobile-back" aria-label="Back to chats" onClick={() => setMobileChat(false)}><ArrowLeft/></button>
+            <button className="icon-button mobile-back" aria-label="Back to chats" onClick={closeMobileChat}><ArrowLeft/></button>
             <span className="avatar">{initials(contact.name || contact.phone)}</span>
             <button className="contact-heading" onClick={() => setContactInfoId(contact.id)}><strong>{contact.name || contact.phone}</strong><small>{contact.company || contact.phone}{conversationAccount ? ` · via ${conversationAccount.display_phone_number || conversationAccount.label}` : ''}</small></button>
             <button className="icon-button" aria-label="Search in conversation" onClick={() => setShowSearch((value) => !value)}><Search size={19}/></button>
