@@ -1,113 +1,73 @@
-import {existsSync, readFileSync} from 'node:fs';
-import type {SupabaseClient} from '@supabase/supabase-js';
-import {createClient} from '@supabase/supabase-js';
+import {readFileSync} from 'node:fs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {POST} from '../app/api/auth/password/route';
-import {signOutSession} from '../lib/auth-session';
-
-vi.mock('@supabase/supabase-js', () => ({createClient: vi.fn()}));
+import {assertSameOrigin, configuredPassword, cookieHeader, cookieValue, issueSession, matchesPassword, ownerId, verifySession} from '../lib/password-session';
 
 const loginSource = readFileSync(new URL('../app/login/page.tsx', import.meta.url), 'utf8');
-const routeSource = readFileSync(new URL('../app/api/auth/password/route.ts', import.meta.url), 'utf8');
+const backendSource = readFileSync(new URL('../lib/server.ts', import.meta.url), 'utf8');
+const passwordRouteSource = readFileSync(new URL('../app/api/auth/password/route.ts', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(new URL('../components/workspace.tsx', import.meta.url), 'utf8');
 
-function request(password: unknown) {
-  return new Request('https://example.com/api/auth/password', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({password}),
-  });
-}
-
-function mockAuthReply(reply: unknown) {
-  const signInWithPassword = vi.fn().mockResolvedValue(reply);
-  vi.mocked(createClient).mockReturnValue({
-    auth: {signInWithPassword},
-  } as unknown as ReturnType<typeof createClient>);
-  return signInWithPassword;
-}
+const secret = Buffer.alloc(32, 123).toString('base64');
+const password = 'correct horse battery staple 123';
 
 beforeEach(() => {
-  vi.stubEnv('OPEN_CHET_LOGIN_PHONE', '+919111111111');
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co');
-  vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'public-test-key');
+  vi.stubEnv('OPEN_CHET_SESSION_SECRET', secret);
+  vi.stubEnv('OPEN_CHET_ACCESS_PASSWORD', password);
+  vi.stubEnv('OPEN_CHET_OWNER_USER_ID', '20052a44-6201-44e9-b094-26ff637297cb');
 });
+afterEach(() => { vi.unstubAllEnvs(); });
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.clearAllMocks();
-});
-
-describe('Password-only owner authentication', () => {
-  it('shows one password field, without SMS or voice OTP controls', () => {
+describe('Standalone owner password authentication', () => {
+  it('asks for only the password, without phone, SMS, OTP or Supabase login', () => {
     expect(loginSource).toContain('name="password"');
-    expect(loginSource).toContain("type={showPassword ? 'text' : 'password'}");
     expect(loginSource).not.toContain('name="mobile"');
     expect(loginSource).not.toContain('name="otp"');
-    expect(loginSource).not.toContain('requestPhoneOtp');
-    expect(loginSource).not.toContain('requestVoiceOtp');
-    expect(loginSource).toContain("auth.setSession(");
+    expect(loginSource).not.toContain('browserDB().auth');
+    expect(passwordRouteSource).not.toContain('signInWithPassword');
+    expect(passwordRouteSource).not.toContain('OPEN_CHET_LOGIN_PHONE');
+    expect(passwordRouteSource).toContain('recordFailure');
+    expect(passwordRouteSource).toContain('cookieHeader');
   });
 
-  it('keeps the owner phone only in the server-side environment', () => {
-    expect(routeSource).toContain('process.env.OPEN_CHET_LOGIN_PHONE');
-    expect(loginSource).not.toContain('OPEN_CHET_LOGIN_PHONE');
-    expect(routeSource).toContain('signInWithPassword({phone, password: value.password})');
-    expect(routeSource).not.toContain('process.env.OPEN_CHET_LOGIN_PASSWORD');
+  it('binds valid sessions to the existing owner and rejects changes/tampering', () => {
+    const now = 1791472000000;
+    const token = issueSession(now);
+    expect(ownerId()).toBe('20052a44-6201-44e9-b094-26ff637297cb');
+    expect(verifySession(token, now)).toBe(ownerId());
+    expect(verifySession(token+'bad', now)).toBeNull();
+    expect(verifySession(token, now + 8*86400000)).toBeNull();
+    vi.stubEnv('OPEN_CHET_ACCESS_PASSWORD', 'a different strong password here');
+    expect(verifySession(token, now)).toBeNull();
   });
 
-  it('signs in the configured owner and returns a Supabase session', async () => {
-    const signInWithPassword = mockAuthReply({
-      data: {session: {access_token: 'access-token', refresh_token: 'refresh-token'}},
-      error: null,
-    });
-    const response = await POST(request('strong unique password'));
-    expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('no-store');
-    expect(await response.json()).toEqual({
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
-    });
-    expect(signInWithPassword).toHaveBeenCalledWith({
-      phone: '+919111111111',
-      password: 'strong unique password',
-    });
+  it('validates password and fails closed when configuration is missing', () => {
+    expect(matchesPassword(password)).toBe(true);
+    expect(matchesPassword('incorrect')).toBe(false);
+    vi.stubEnv('OPEN_CHET_ACCESS_PASSWORD', '');
+    expect(() => configuredPassword()).toThrow('not configured');
+    vi.stubEnv('OPEN_CHET_ACCESS_PASSWORD', password);
+    vi.stubEnv('OPEN_CHET_SESSION_SECRET', '');
+    expect(() => issueSession()).toThrow('not configured');
   });
 
-  it('rejects an incorrect password without returning tokens', async () => {
-    mockAuthReply({data: {session: null}, error: new Error('Invalid credentials')});
-    const response = await POST(request('wrong'));
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({error: 'Incorrect password. Please try again.'});
+  it('issues HttpOnly SameSite cookie that is not accessible to scripts', () => {
+    const token = issueSession();
+    const cookie = cookieHeader(token, true);
+    expect(cookie).toContain('HttpOnly');
+    expect(cookie).toContain('SameSite=Strict');
+    expect(cookie).toContain('Secure');
+    expect(cookieValue(new Request('https://example.com/', {headers:{cookie}}))).toBe(token);
   });
 
-  it('rejects blank passwords', async () => {
-    const response = await POST(request(''));
-    expect(response.status).toBe(400);
-    expect(vi.mocked(createClient)).not.toHaveBeenCalled();
+  it('blocks cross-site state-changing requests', () => {
+    expect(() => assertSameOrigin(new Request('https://example.com/api/action', {method:'POST',headers:{origin:'https://attacker.test'}}))).toThrow('Cross-site');
+    expect(() => assertSameOrigin(new Request('https://example.com/api/action', {method:'POST',headers:{origin:'https://example.com'}}))).not.toThrow();
   });
 
-  it('fails closed without a configured owner identity', async () => {
-    vi.stubEnv('OPEN_CHET_LOGIN_PHONE', '');
-    const response = await POST(request('secret'));
-    expect(response.status).toBe(503);
-    expect(vi.mocked(createClient)).not.toHaveBeenCalled();
-  });
-
-  it('preserves first-login workspace setup and existing Supabase identity', () => {
-    expect(loginSource).toContain("setStep('setup')");
-    expect(loginSource).toContain("api('/api/bootstrap'");
-    expect(workspaceSource).toContain('signOutSession(browserDB())');
-    expect(workspaceSource).toContain("router.replace('/login')");
-  });
-
-  it('revokes the Supabase session on sign out', async () => {
-    const signOut = vi.fn().mockResolvedValue({error: null});
-    await signOutSession({auth: {signOut}} as unknown as SupabaseClient);
-    expect(signOut).toHaveBeenCalledOnce();
-  });
-
-  it('removes the old voice OTP HTTP endpoint', () => {
-    expect(existsSync(new URL('../app/api/auth/voice-otp/route.ts', import.meta.url))).toBe(false);
+  it('authenticates APIs using the owner cookie, not Supabase phone JWT', () => {
+    expect(backendSource).toContain('verifySession(cookieValue(req))');
+    expect(backendSource).not.toContain('auth.auth.getUser');
+    expect(workspaceSource).toContain("api('/api/auth/session',{method:'DELETE'})");
+    expect(workspaceSource).toContain("credentials: 'same-origin'");
   });
 });
