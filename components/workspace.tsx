@@ -6,7 +6,7 @@ import {useEffect, useRef, useState} from 'react';
 import Papa from 'papaparse';
 import {
   ArrowLeft, ArrowRight, Bell, Bot, BriefcaseBusiness, Check, CheckCheck, ChevronLeft,
-  ChevronRight, Clock, Download, FileText, Image as ImageIcon, Info,
+  ChevronRight, Clock, FileText, Image as ImageIcon, Info,
   LogOut, Menu, MessageCircle, MessageSquare, MoreVertical, Package,
   Paperclip, Pencil, Plus, Search, Send, Settings, ShieldCheck, Smile, Sparkles, Upload,
   UserRound, Users, X, Zap,
@@ -21,12 +21,11 @@ import {demoAction, demoData} from '@/lib/demo';
 import {api, configured} from '@/lib/supabase';
 import type {Action, Contact, Data, Message, Row} from '@/lib/types';
 
-type MainPage = 'Chats' | 'Contacts' | 'Tools' | 'More';
-type ToolView = 'home' | 'quick-replies' | 'media';
+type MainPage = 'Chats' | 'Contacts' | 'More';
 type MoreView = 'home' | 'ai' | 'connection' | 'profile' | 'settings';
 
 const navigation = [
-  ['Chats', MessageSquare], ['Contacts', Users], ['Tools', Zap], ['More', Menu],
+  ['Chats', MessageSquare], ['Contacts', Users], ['More', Menu],
 ] as const;
 const time = (value: string) => new Date(value).toLocaleTimeString('en-IN', {hour: '2-digit', minute: '2-digit'});
 const initials = (value: string) => value.replace(/^Dr\. /, '').split(' ').slice(0, 2).map((part) => part[0]).join('');
@@ -37,7 +36,6 @@ export default function Workspace() {
   const [data, setData] = useState<Data | null>(null);
   const [demo, setDemo] = useState(!configured);
   const [page, setPage] = useState<MainPage>('Chats');
-  const [toolView, setToolView] = useState<ToolView>('home');
   const [moreView, setMoreView] = useState<MoreView>('home');
   const [selected, setSelected] = useState('');
   const [routeChoice,setRouteChoice]=useState('');
@@ -204,13 +202,12 @@ export default function Workspace() {
       if (showChatMenu) { setShowChatMenu(false); return true; }
       if (showSearch) { setShowSearch(false); setChatSearch(''); return true; }
       if (mobileChat) { closeMobileChat(); return true; }
-      if (page === 'Tools' && toolView !== 'home') { setToolView('home'); return true; }
       if (page === 'More' && moreView !== 'home') { setMoreView('home'); return true; }
       if (page !== 'Chats') { setPage('Chats'); setQuery(''); return true; }
       return false;
     };
     return () => { delete w.openChetNativeBack; };
-  }, [dialog, catalogueContext, contactInfoId, showNotifications, showChatMenu, showSearch, mobileChat, page, toolView, moreView]);
+  }, [dialog, catalogueContext, contactInfoId, showNotifications, showChatMenu, showSearch, mobileChat, page, moreView]);
 
   async function act(action: Action, success?: string) {
     if(action.type==='send')action={...action,values:{...action.values,route_conversation_id:routeChoice||state.current?.conversations.find(c=>c.id===action.id)?.route_conversation_id}};
@@ -373,7 +370,6 @@ export default function Workspace() {
 
   function navigate(name: MainPage) {
     setPage(name); setQuery(''); setMobileChat(false); setShowChatMenu(false);
-    if (name === 'Tools') setToolView('home');
     if (name === 'More') setMoreView('home');
   }
 
@@ -427,17 +423,14 @@ export default function Workspace() {
     return [person?.name, person?.phone, person?.company, item.preview].join(' ').toLowerCase().includes(query.toLowerCase());
   }).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   const messages = orderedMessages(data.messages).filter((message) => message.conversation_id === selected && message.body.toLowerCase().includes(chatSearch.toLowerCase()));
-  const quickReplies = data.quick_replies.filter((reply) => `${reply.shortcut} ${reply.body}`.toLowerCase().includes(query.toLowerCase()));
   const infoContact = data.contacts.find((item) => item.id === contactInfoId);
   const infoConversation = data.conversations.find((item) => item.contact_id === contactInfoId);
   const infoNotes = data.notes.filter((note) => note.conversation_id === infoConversation?.id);
-  const mediaMessages = data.messages.filter((message) => ['image', 'document', 'video', 'audio'].includes(message.kind));
 
   const contactInfo = infoContact ? <div className="contact-info-overlay" onClick={() => setContactInfoId('')}>
     <aside className="contact-info-sheet" aria-label="Contact Info" onClick={(event) => event.stopPropagation()}>
       <header><button className="icon-button" aria-label="Close contact info" onClick={() => setContactInfoId('')}><X/></button><strong>Contact Info</strong><button className="icon-button" aria-label="Edit contact" onClick={() => setDialog({type: 'contact', row: infoContact})}><Pencil size={18}/></button></header>
       <div className="contact-info-hero"><span className="avatar large">{initials(infoContact.name || infoContact.phone)}</span><h2>{infoContact.name || infoContact.phone}</h2><p>{infoContact.phone}</p>{infoContact.company ? <small>{infoContact.company}</small> : null}<button className="primary" onClick={() => {setContactInfoId(''); openContact(infoContact);}}><MessageCircle size={17}/>Message</button></div>
-      <section><button className="info-row" onClick={() => {setContactInfoId(''); setPage('Tools'); setToolView('media');}}><ImageIcon/><span><b>Media, Links & Documents</b><small>Shared files and attachments</small></span><ChevronRight/></button></section>
       <section><h3>Tags</h3><div className="tags">{infoContact.tags.length ? infoContact.tags.map((tag) => <span key={tag}>{tag}</span>) : <small>No tags</small>}</div></section>
       <section><h3>Notes</h3>{infoNotes.length ? infoNotes.map((note) => <p className="note-card" key={note.id}>{note.body}</p>) : <p className="muted">No notes yet.</p>}</section>
       <section><h3>Business details</h3><div className="detail-line"><span>Company</span><b>{infoContact.company || '—'}</b></div><div className="detail-line"><span>Category</span><b>{infoContact.category || '—'}</b></div><div className="detail-line"><span>Phone</span><b>{infoContact.phone}</b></div></section>
@@ -479,7 +472,6 @@ export default function Workspace() {
               {showChatMenu ? <div className="chat-menu" role="menu">
                 <button onClick={() => {setContactInfoId(contact.id); setShowChatMenu(false);}}><Info/>Contact Info</button>
                 <button onClick={() => {setShowSearch(true); setShowChatMenu(false);}}><Search/>Search</button>
-                <button onClick={() => {setPage('Tools'); setToolView('media'); setMobileChat(false); setShowChatMenu(false);}}><ImageIcon/>Media / Documents</button>
                 <button onClick={() => {openCatalogue('chat'); setShowChatMenu(false);}}><Package/>Catalogue</button>
                 <button disabled={busy} onClick={() => {act({type: 'mode', id: selected, values: {mode: conversation.mode === 'ai' ? 'human' : 'ai'}}); setShowChatMenu(false);}}>{conversation.mode === 'ai' ? <UserRound/> : <Bot/>}{conversation.mode === 'ai' ? 'Take Over' : 'Resume AI'}</button>
                 <button className="danger" onClick={() => {setDialog({type: 'clear-chat'}); setShowChatMenu(false);}}><X/>Clear Chat</button>
@@ -523,17 +515,6 @@ export default function Workspace() {
       </main> : null}
 
       {page === 'Contacts' ? <main className="page-content mvp-page"><div className="simple-page-header"><div><h1>Contacts</h1><p>{data.contacts.length} contacts</p></div><button className="primary" onClick={() => setDialog({type: 'contact'})}><Plus/>Add</button></div><div className="search page-search"><Search/><input aria-label="Search contacts" placeholder="Search contacts…" value={query} onChange={(event) => setQuery(event.target.value)}/></div><div className="contacts-list">{data.contacts.filter((item) => [item.name, item.phone, item.company].join(' ').toLowerCase().includes(query.toLowerCase())).map((item) => <button className="contact-list-item" key={item.id} onClick={() => setContactInfoId(item.id)}><span className="avatar">{initials(item.name || item.phone)}</span><span><b>{item.name || item.phone}</b><small>{item.phone}{item.company ? ` · ${item.company}` : ''}</small></span><ChevronRight/></button>)}</div>{data.contacts_has_more?<button className="secondary" onClick={async()=>{contactsPages.current++;await reload().catch(()=>notify('More contacts could not be loaded'));}}>Load more contacts</button>:null}</main> : null}
-
-      {page === 'Tools' ? <main className="page-content mvp-page">
-        {toolView === 'home' ? <><div className="simple-page-header"><div><h1>Tools</h1><p>Everyday conversation tools</p></div></div><div className="tools-grid">
-          <button onClick={() => openCatalogue('manage')}><span><Package/></span><b>Catalogue</b><small>Browse and manage products</small></button>
-          <button onClick={() => setToolView('quick-replies')}><span><Zap/></span><b>Quick Replies</b><small>Saved answers for chat</small></button>
-          <button onClick={() => setDialog({type: 'import'})}><span><Upload/></span><b>Import Contacts</b><small>Add contacts from CSV</small></button>
-          <button onClick={() => setToolView('media')}><span><ImageIcon/></span><b>Media / Documents</b><small>Shared files and links</small></button>
-        </div></> : null}
-        {toolView === 'quick-replies' ? <><div className="subpage-header"><button className="icon-button" onClick={() => setToolView('home')}><ChevronLeft/></button><div><h1>Quick Replies</h1><p>Type / in chat to use one</p></div><button className="primary" onClick={() => setDialog({type: 'quick_reply'})}><Plus/>Add</button></div><div className="quick-reply-list">{quickReplies.map((reply) => <article key={reply.id}><div><b>{reply.shortcut}</b><p>{reply.body}</p></div><button className="icon-button" aria-label={`Edit ${reply.shortcut}`} onClick={() => setDialog({type: 'quick_reply', row: reply})}><Pencil/></button></article>)}</div></> : null}
-        {toolView === 'media' ? <><div className="subpage-header"><button className="icon-button" onClick={() => setToolView('home')}><ChevronLeft/></button><div><h1>Media / Documents</h1><p>Files shared in conversations</p></div></div>{mediaMessages.length ? <div className="media-list">{mediaMessages.map((message) => <button key={message.id} onClick={() => downloadMedia(message)}><FileText/><span><b>{message.body || message.kind}</b><small>{message.kind} · {new Date(message.created_at).toLocaleDateString('en-IN')}</small></span><Download/></button>)}</div> : <div className="empty big"><ImageIcon/><h2>No media yet</h2><p>Images and documents from chats will appear here.</p></div>}</> : null}
-      </main> : null}
 
       {page === 'More' ? <main className="page-content mvp-page">
         {moreView === 'home' ? <><div className="simple-page-header"><div><h1>More</h1><p>Business and assistant settings</p></div></div><div className="more-list">
