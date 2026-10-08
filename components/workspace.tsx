@@ -17,8 +17,7 @@ import {catalogueDemoProducts, productSnapshot} from '@/lib/catalogue';
 import {canAdmin, canManage, messagingOpen, normalizePhone, templateVariables} from '@/lib/domain';
 import {customerThreadData,orderedMessages,selectedThread,createRefreshQueue} from '@/lib/inbox-state';
 import {demoAction, demoData} from '@/lib/demo';
-import {api, browserDB, configured} from '@/lib/supabase';
-import {signOutSession} from '@/lib/auth-session';
+import {api, configured} from '@/lib/supabase';
 import type {Action, Contact, Data, Message, Row} from '@/lib/types';
 
 type MainPage = 'Chats' | 'Contacts' | 'Tools' | 'More';
@@ -168,16 +167,12 @@ export default function Workspace() {
   useEffect(() => {if (demo && data) localStorage.setItem('open-chet-demo-v1', JSON.stringify(data));}, [data, demo]);
   useEffect(() => {
     if (!data || demo) return;
-    const org = data.organization_id;
     let timer:number|undefined;
     const refresh=()=>{window.clearTimeout(timer);timer=window.setTimeout(()=>reload().catch(()=>notify('Inbox refresh failed. Reconnecting…')),150);};
-    const channel=browserDB().channel('inbox:'+org);
-    for(const table of ['messages','conversations','contacts','notes','notifications'])
-      channel.on('postgres_changes',{event:'*',schema:'public',table,filter:'organization_id=eq.'+org},refresh);
-    channel.subscribe(status=>{if(status==='SUBSCRIBED')refresh();});
-    const poll=window.setInterval(refresh,30000);
+    // The password session is HTTP-only; refresh through authenticated server APIs.
+    const poll=window.setInterval(refresh,7000);
     window.addEventListener('online',refresh);window.addEventListener('focus',refresh);
-    return ()=>{browserDB().removeChannel(channel);window.clearInterval(poll);window.clearTimeout(timer);
+    return ()=>{window.clearInterval(poll);window.clearTimeout(timer);
       window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
   }, [data?.organization_id, demo]);
   useEffect(() => {messageEnd.current?.scrollIntoView({behavior: 'smooth'});}, [selected, data?.messages.length]);
@@ -348,8 +343,7 @@ export default function Workspace() {
   async function downloadMedia(message: Message) {
     if (demo) {notify('Demo media is only available in its original browser session'); return;}
     try {
-      const {data: {session}} = await browserDB().auth.getSession();
-      const response = await fetch(`/api/media?message=${message.id}`, {headers: {Authorization: `Bearer ${session?.access_token}`}});
+      const response = await fetch(`/api/media?message=${message.id}`, {credentials: 'same-origin'});
       if (!response.ok) throw Error('Media could not be downloaded');
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = message.body || 'attachment'; anchor.click();
@@ -534,7 +528,7 @@ export default function Workspace() {
         {moreView === 'ai' ? <form className="settings-form card" onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); await act({type: 'settings', values: {...data.settings, ai_enabled: values.ai_enabled === 'on', auto_pause: true, tone: values.tone, instructions: values.instructions, blocked_topics: values.blocked_topics}}, 'AI settings saved');}}><fieldset disabled={!admin || busy}><label className="checkbox-row"><input type="checkbox" name="ai_enabled" defaultChecked={data.settings.ai_enabled}/>Enable AI replies globally</label><label className="checkbox-row locked-setting"><input type="checkbox" checked readOnly/>Pause AI after every manual reply</label>{selectField('Tone', 'tone', ['Professional', 'Friendly', 'Concise'], data.settings.tone)}{area('Business instructions / knowledge', 'instructions', data.settings.instructions)}{area('Escalation guidance', 'blocked_topics', data.settings.blocked_topics)}<button className="primary">Save AI settings</button></fieldset></form> : null}
         {moreView === 'connection' ? <div className="connection-manager"><div className="connection-manager-head"><div><h2>{data.connection?.whatsapp ? 'Connected numbers' : 'Connect WhatsApp Business'}</h2><p>Each conversation replies through the number that received it.</p></div>{admin && !demo ? <button className="primary" onClick={() => setDialog({type: 'whatsapp-account'})}><Plus/>Add WhatsApp number</button> : null}</div>{data.connection?.whatsapp_accounts?.length ? <div className="connection-list">{data.connection.whatsapp_accounts.map((account) => <article className="connection-row" key={account.id}><span className="connection-row-icon"><MessageSquare size={20}/></span><div className="connection-row-copy"><div className="connection-row-title"><b>{account.label}</b><span className={`connection-badge ${account.is_active ? '' : 'disabled'}`}>{account.is_active ? 'Connected' : 'Disabled'}</span>{account.is_default ? <span className="connection-badge default">Default</span> : null}</div><small>{account.display_phone_number || `Phone Number ID ${account.phone_number_id}`}{account.verified_name ? ` · ${account.verified_name}` : ''}</small></div>{admin ? <div className="connection-row-actions"><button className="secondary" disabled={busy} onClick={() => checkWhatsAppHealth(account)}>Meta health</button><button className="secondary" disabled={busy} onClick={() => setDialog({type: 'whatsapp-token', row: account})}>Update token</button>{account.is_active && !account.is_default ? <button className="secondary" disabled={busy} onClick={() => connectionAction({action: 'default', id: account.id}, 'Default number updated')}>Set default</button> : null}<button className="icon-button" aria-label={`Edit ${account.label}`} onClick={() => setDialog({type: 'whatsapp-label', row: account})}><Pencil size={16}/></button><button className="secondary" disabled={busy} onClick={() => connectionAction({action: 'active', id: account.id, is_active: !account.is_active}, account.is_active ? 'WhatsApp number disabled' : 'WhatsApp number enabled')}>{account.is_active ? 'Disable' : 'Enable'}</button></div> : null}</article>)}</div> : <div className="connection-empty">No WhatsApp number is connected yet.</div>}</div> : null}
         {moreView === 'profile' ? <form className="settings-form card" onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); await act({type: 'settings', values: {...data.settings, name: values.name}}, 'Business profile saved');}}><fieldset disabled={!admin || busy}>{field('Business name', 'name', data.settings.name, 'text', true)}<button className="primary">Save profile</button></fieldset></form> : null}
-        {moreView === 'settings' ? <form className="settings-form card" onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); await act({type: 'settings', values: {...data.settings, business_hours: values.business_hours, timezone: values.timezone}}, 'Settings saved');}}><fieldset disabled={!admin || busy}>{field('Business hours', 'business_hours', data.settings.business_hours)}{field('Time zone', 'timezone', data.settings.timezone)}<button className="primary">Save settings</button></fieldset><hr/>{demo ? <button type="button" className="secondary" onClick={() => setDialog({type: 'reset'})}>Reset demo data</button> : <button type="button" className="secondary" onClick={async () => {try{await signOutSession(browserDB());router.replace('/login');}catch{notify('Sign out failed. Please try again.');}}}><LogOut/>Sign out</button>}</form> : null}
+        {moreView === 'settings' ? <form className="settings-form card" onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); await act({type: 'settings', values: {...data.settings, business_hours: values.business_hours, timezone: values.timezone}}, 'Settings saved');}}><fieldset disabled={!admin || busy}>{field('Business hours', 'business_hours', data.settings.business_hours)}{field('Time zone', 'timezone', data.settings.timezone)}<button className="primary">Save settings</button></fieldset><hr/>{demo ? <button type="button" className="secondary" onClick={() => setDialog({type: 'reset'})}>Reset demo data</button> : <button type="button" className="secondary" onClick={async () => {try{await api('/api/auth/session',{method:'DELETE'});router.replace('/login');}catch{notify('Sign out failed. Please try again.');}}}><LogOut/>Sign out</button>}</form> : null}
       </main> : null}
 
       <nav className="mobile-nav">{navigation.map(([name, Icon]) => <button key={name} className={page === name ? 'active' : ''} onClick={() => navigate(name)}><Icon size={22}/><span>{name}</span></button>)}</nav>
