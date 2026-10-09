@@ -57,3 +57,22 @@ test('single-password login uses the blue theme without requiring phone or OTP',
   expect(await primary.evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(21, 85, 245)');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
+
+
+test('blue chat wallpaper uses subtle layered waves with no repeating dot grid', async ({page}) => {
+  await page.goto('/?demo=1');
+  await page.locator('.conversation').first().click();
+  const wallpaper=page.locator('.messages');
+  await expect(wallpaper).toBeVisible();
+  const style=await wallpaper.evaluate(node=>{
+    const css=getComputedStyle(node);
+    return {image:css.backgroundImage,size:css.backgroundSize,repeat:css.backgroundRepeat,position:css.backgroundPosition};
+  });
+  expect(style.image.match(/radial-gradient/g)?.length).toBe(4);
+  expect(style.image).not.toContain('1px 1px');
+  expect(style.size.split(', ').length).toBe(5);
+  expect(style.size.split(', ').every(layer => layer === '100% 100%')).toBe(true);
+  expect(style.repeat.split(', ').every(layer => layer === 'no-repeat')).toBe(true);
+  await expect(page.locator('.message-bubble').first()).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});
