@@ -31,7 +31,7 @@ test('Android-style Back and browser Back return from chat to chat list without 
   });
   expect(target).toContain('contact-heading');
   await page.locator('.chat-header .contact-heading').click();
-  await expect(page.getByLabel('Contact Info')).toBeVisible();
+  await expect(page.getByRole('complementary',{name:'Contact Info'})).toBeVisible();
   await page.getByRole('button',{name:'Close contact info'}).click();
   expect(await page.evaluate(() => window.history.state?.openChetChatView)).toBe(true);
 
@@ -68,7 +68,7 @@ test('mobile Contacts tab opens customer details by tapping a contact',async({pa
   const item=page.locator('.contact-list-item').first();
   await expect(item).toBeVisible();
   await item.click();
-  await expect(page.getByLabel('Contact Info')).toBeVisible();
+  await expect(page.getByRole('complementary',{name:'Contact Info'})).toBeVisible();
   await page.getByRole('button',{name:'Close contact info'}).click();
   await expect(page.getByRole('heading',{name:'Contacts'})).toBeVisible();
 });
