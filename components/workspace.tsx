@@ -8,7 +8,7 @@ import {
   ArrowLeft, ArrowRight, Bell, Bot, BriefcaseBusiness, Check, CheckCheck, ChevronLeft,
   ChevronRight, Clock, FileText, Image as ImageIcon, Info,
   LogOut, Menu, MessageCircle, MessageSquare, MoreVertical, Package,
-  Paperclip, Pencil, Plus, Search, Send, Settings, ShieldCheck, Smile, Sparkles, Upload,
+  Paperclip, Pencil, Plus, Search, Send, Settings, ShieldCheck, Smile, Sparkles, Trash2, ListFilter, Upload,
   UserRound, Users, X, Zap,
 } from 'lucide-react';
 import CataloguePanel, {ProductMessage} from './catalogue-panel';
@@ -442,7 +442,7 @@ export default function Workspace() {
     </aside>
   </div> : null;
 
-  return <div className={`app mvp-app ${mobileChat ? 'mobile-chat' : ''}`}>
+  return <div className={`app mvp-app ${mobileChat ? 'mobile-chat' : ''} ${page === 'Chats' ? 'chats-page' : ''}`}>
     <aside className="sidebar mvp-sidebar">
       <Link href="/" className="brand"><span className="brand-icon"><MessageSquare size={23}/></span><span>Open <b>Chet</b></span></Link>
       <nav>{navigation.map(([name, Icon]) => <button key={name} className={page === name ? 'nav-item active' : 'nav-item'} onClick={() => navigate(name)}><Icon size={20}/><span>{name}</span>{name === 'Chats' && data.conversations.some((item) => item.unread) ? <b>{data.conversations.filter((item) => item.unread).length}</b> : null}</button>)}</nav>
@@ -456,7 +456,19 @@ export default function Workspace() {
       {page === 'Chats' ? <main className="inbox mvp-inbox">
         <section className="chat-list">
           <div className="mobile-chats-heading"><span><strong>Chats</strong><small>{data.conversations.length} customer conversations</small></span><button className="icon-button new-conversation-button" aria-label="New conversation" onClick={() => setDialog({type: 'new-chat'})}><Plus size={20}/></button></div>
-          <div className="search chat-list-search"><Search size={18}/><input placeholder="Search customers or messages…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
+          <div className="chat-search-toolbar">
+            <div className="search chat-list-search"><Search size={18}/><input placeholder="Search chats…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
+            <div className="mobile-search-actions">
+              <button type="button" className={chatFilter === 'unread' ? 'mobile-filter-button active' : 'mobile-filter-button'}
+                aria-label={chatFilter === 'unread' ? 'Show all chats' : 'Show unread chats'}
+                aria-pressed={chatFilter === 'unread'}
+                onClick={() => setChatFilter(value => value === 'all' ? 'unread' : 'all')}>
+                <ListFilter size={19}/>
+                {unreadConversations > 0 ? <span className="mobile-unread-dot"/> : null}
+              </button>
+              <button type="button" className="mobile-new-chat" aria-label="New conversation" onClick={() => setDialog({type:'new-chat'})}><Plus size={22}/></button>
+            </div>
+          </div>
           <div className="chat-view-tabs" role="group" aria-label="Filter chats">
             <button type="button" className={chatFilter === 'all' ? 'selected' : ''} aria-pressed={chatFilter === 'all'} onClick={() => setChatFilter('all')}>All chats</button>
             <button type="button" className={chatFilter === 'unread' ? 'selected' : ''} aria-pressed={chatFilter === 'unread'} onClick={() => setChatFilter('unread')}>Unread {unreadConversations > 0 ? <span className="chat-filter-count">{unreadConversations}</span> : null}</button>
@@ -483,6 +495,7 @@ export default function Workspace() {
                 <button onClick={() => {openCatalogue('chat'); setShowChatMenu(false);}}><Package/>Catalogue</button>
                 <button disabled={busy} onClick={() => {act({type: 'mode', id: selected, values: {mode: conversation.mode === 'ai' ? 'human' : 'ai'}}); setShowChatMenu(false);}}>{conversation.mode === 'ai' ? <UserRound/> : <Bot/>}{conversation.mode === 'ai' ? 'Take Over' : 'Resume AI'}</button>
                 <button className="danger" onClick={() => {setDialog({type: 'clear-chat'}); setShowChatMenu(false);}}><X/>Clear Chat</button>
+                {manager ? <button className="danger" onClick={() => {setDialog({type:'remove-contact',row:contact}); setShowChatMenu(false);}}><Trash2/>Remove Contact</button> : null}
               </div> : null}
             </div>
           </header>
@@ -552,7 +565,7 @@ export default function Workspace() {
     {contactInfo}
     {catalogueContext ? <CataloguePanel products={data.products} context={catalogueContext} conversationName={contact?.name || contact?.phone} canSend={catalogueContext === 'chat' && Boolean(selected) && messagingWindowOpen} demo={demo} onClose={() => setCatalogueContext(null)} onSend={async (ids) => {const sent: string[] = []; for (const id of ids) {const result = await act({type: 'send', id: selected, values: {kind: 'product', product_id: id, idempotency_key: crypto.randomUUID()}}); if (!result) break; sent.push(id);} return sent;}} onAdd={manager ? () => {setCatalogueContext(null); setDialog({type: 'product'});} : undefined} onEdit={manager ? (product) => {setCatalogueContext(null); setDialog({type: 'product', row: product});} : undefined}/> : null}
 
-    {dialog ? <Dialog title={{contact: dialog.row ? 'Edit contact' : 'Add contact', 'new-chat': 'Start a conversation', 'send-template': 'Send a WhatsApp template', 'send-template-form': 'Review paid template', quick_reply: 'Quick reply', product: 'Product details', import: 'Import contacts', 'clear-chat': 'Clear chat', reset: 'Reset demo workspace', 'whatsapp-account': 'Add WhatsApp number', 'whatsapp-label': 'Edit connection name', 'whatsapp-health': 'Meta health', 'whatsapp-token': 'Update WhatsApp token'}[dialog.type] || dialog.type} onClose={() => setDialog(null)}>
+    {dialog ? <Dialog title={{contact: dialog.row ? 'Edit contact' : 'Add contact', 'new-chat': 'Start a conversation', 'send-template': 'Send a WhatsApp template', 'send-template-form': 'Review paid template', quick_reply: 'Quick reply', product: 'Product details', import: 'Import contacts', 'clear-chat': 'Clear chat', 'remove-contact': 'Remove customer contact', reset: 'Reset demo workspace', 'whatsapp-account': 'Add WhatsApp number', 'whatsapp-label': 'Edit connection name', 'whatsapp-health': 'Meta health', 'whatsapp-token': 'Update WhatsApp token'}[dialog.type] || dialog.type} onClose={() => setDialog(null)}>
       {dialog.type === 'whatsapp-account' ? <form onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); const next = await connectionAction({action: 'add', ...values, make_default: values.make_default === 'on'}, 'WhatsApp number connected'); if (next) setDialog(null);}}><p className="credential-note"><b>SCM PHARMACY new number is prefilled.</b><br/>Paste the Meta permanent access token, then tap Verify and connect. The token is verified with Meta, encrypted on the server, and never shown again.</p>{field('Connection name / label', 'label', 'SCM PHARMACY • +91 92034 77793', 'text', true)}{field('Phone Number ID', 'phone_number_id', '1415163475002152', 'text', true)}{field('WhatsApp Business Account ID', 'business_account_id', '1975778520048284', 'text', true)}{field('Access Token', 'access_token', '', 'password', true)}<label className="checkbox-row"><input type="checkbox" name="make_default" defaultChecked/>Make this the default WhatsApp number</label><button className="primary" disabled={busy}>Verify and connect</button></form> : null}
       {dialog.type === 'whatsapp-token' && dialog.row ? <form onSubmit={async (event) => {event.preventDefault(); const values = inputValues(event.currentTarget); const next = await connectionAction({action: 'token', id: dialog.row!.id, access_token: values.access_token}, 'WhatsApp token updated'); if (next) setDialog(null);}}><p className="credential-note"><b>{dialog.row.label}</b><br/>Generate the token from the SCM Pharmacy Meta App (App ID 2302630346983637). Open Chet will verify it against this saved Phone Number ID and WABA before replacing the encrypted token.</p>{field('New permanent access token', 'access_token', '', 'password', true)}<button className="primary" disabled={busy}>Verify and replace token</button></form> : null}
       {dialog.type === 'whatsapp-health' && dialog.row ? <div><p className="credential-note"><b>{dialog.row.label}</b><br/>{dialog.row.display_phone_number || dialog.row.phone_number_id}<br/>This reads Meta directly with the encrypted token stored for this number. The token is never returned to the browser.</p><pre style={{whiteSpace:'pre-wrap',wordBreak:'break-word',maxHeight:'55vh',overflow:'auto',fontSize:'12px'}}>{JSON.stringify(dialog.row.health,null,2)}</pre></div> : null}
@@ -580,6 +593,21 @@ export default function Workspace() {
         <button className="primary" disabled={busy}>Confirm &amp; send approved template</button>
       </form> : null}
       {dialog.type === 'import' ? <><p>CSV columns: name, phone, company, category, tags, notes, custom_fields. Phone numbers must include a country code.</p><label>Select CSV<input type="file" accept=".csv,text/csv" onChange={async (event) => {const file = event.target.files?.[0]; if (!file) return; const parsed = Papa.parse<Record<string, string>>(await file.text(), {header: true, skipEmptyLines: true}); const seen = new Set(data.contacts.map((item) => item.phone)); setImportRows(parsed.data.slice(0, 1000).map((row, index) => {let error = parsed.errors.length ? 'CSV parse error' : ''; let phone = row.phone || ''; try {phone = normalizePhone(phone); if (seen.has(phone)) error = 'Duplicate phone'; seen.add(phone); if (!row.name?.trim()) error = 'Name required'; JSON.parse(row.custom_fields || '{}');} catch {error = 'Invalid phone or custom fields';} return {id: String(index), ...row, phone, error};}));}}/></label><div className="import-preview">{importRows.map((row) => <div key={row.id}><b>{row.name}</b><span>{row.phone}</span><span className={row.error ? 'warning' : 'green-text'}>{row.error || 'Ready'}</span></div>)}</div><p>{importRows.filter((row) => !row.error).length} ready · {importRows.filter((row) => row.error).length} skipped</p><button className="primary" disabled={busy || !importRows.some((row) => !row.error)} onClick={async () => {let count = 0; for (const row of importRows.filter((item) => !item.error)) {const next = await act({type: 'contact', values: {name: row.name, phone: row.phone, company: row.company || '', category: row.category || '', tags: (row.tags || '').split(',').map((tag: string) => tag.trim()).filter(Boolean), custom_fields: JSON.parse(row.custom_fields || '{}'), opted_in: false}}); if (!next) break; count++;} notify(`${count} contacts imported`); setDialog(null);}}>Import valid contacts</button></> : null}
+      {dialog.type === 'remove-contact' && dialog.row ? <div className="remove-contact-confirm">
+        <p><strong>{dialog.row.name || dialog.row.phone}</strong></p>
+        <p>{dialog.row.phone}</p>
+        <p>Remove this number from both Chats and Contacts? This is different from Clear Chat. Older messages are retained securely for audit. If the customer messages again, the conversation can return.</p>
+        <button type="button" className="danger-button" disabled={busy} onClick={async () => {
+          const next=await act({type:'remove_contact',id:dialog.row!.id},'Contact removed from Chats and Contacts');
+          if(next) {
+            setDialog(null);setContactInfoId('');setShowChatMenu(false);
+            const nextId=next.conversations[0]?.id||'';
+            selectedRef.current=nextId;setSelected(nextId);
+            if(window.history.state?.openChetChatView)window.history.back();
+            setMobileChat(false);
+          }
+        }}><Trash2 size={16}/> Remove number and chat from lists</button>
+      </div> : null}
       {dialog.type === 'clear-chat' ? <><p>Clear this customer’s history from the inbox on all WhatsApp numbers? Messages remain in the audit history.</p><button className="danger-button" disabled={busy} onClick={async () => {const next = await act({type: 'clear_chat', id: selected}, 'Chat cleared'); if (next) setDialog(null);}}>Clear chat</button></> : null}
       {dialog.type === 'reset' ? <><p>Reset local demo messages, contacts and settings?</p><button className="primary" onClick={() => {const next = customerThreadData(demoData()); setData(next); setSelected(next.conversations[0].id); setDialog(null); notify('Demo reset');}}>Reset demo</button></> : null}
     </Dialog> : null}
