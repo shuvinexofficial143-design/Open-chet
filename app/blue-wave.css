@@ -1,0 +1,378 @@
+/*
+  OPEN CHET / BLUE WAVE
+  Real responsive product theme based on the selected cobalt-blue messaging UI.
+  Pure presentation + functional chat filter; existing business APIs remain unchanged.
+*/
+:root {
+  --green:#1555f5;
+  --green-dark:#0b3ab9;
+  --mint:#eaf1ff;
+  --text:#142141;
+  --muted:#687997;
+  --line:#e4eafa;
+  --bg:#f3f7ff;
+  --soft:#eff4ff;
+}
+html { color-scheme:light }
+body {font-family:Inter,"Segoe UI",Arial,sans-serif;background:#f2f6ff;color:#16234a}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:3px solid #4f83fc;outline-offset:2px
+}
+.mvp-app {
+  --green:#1555f5;
+  --green-dark:#0b3ab9;
+  --mint:#eaf1ff;
+  --text:#142141;
+  --muted:#687997;
+  --line:#e4eafa;
+  --bg:#f3f7ff;
+  background:#f3f7ff;
+  color:#18284a;
+  font-family:Inter,"Segoe UI",Arial,sans-serif;
+}
+.mvp-app .mvp-sidebar {
+  width:234px;
+  background:linear-gradient(160deg,#09225b 0%,#0a2462 46%,#0d3da0 100%);
+  color:#e9efff;
+  border-right:1px solid #224ba0;
+  padding:26px 13px 8px;
+  box-shadow:7px 0 30px #1638880e;
+}
+.mvp-app .mvp-sidebar .brand{
+  color:#fff;font-size:23px;font-weight:800;letter-spacing:-.75px;
+  padding:3px 8px;gap:10px
+}
+.mvp-app .mvp-sidebar .brand b{color:#7eabff}
+.mvp-app .mvp-sidebar .brand-icon{
+  width:42px;height:42px;
+  border:1px solid #6fa5ff7a;border-radius:14px;
+  background:linear-gradient(145deg,#3e8bff,#1448ed);
+  box-shadow:0 9px 23px #0619487a;
+}
+.mvp-app .mvp-sidebar .brand-icon svg{stroke-width:2.4}
+.mvp-app .mvp-sidebar nav{gap:8px;margin-top:44px}
+.mvp-app .mvp-sidebar .nav-item{
+  min-height:51px;border-radius:13px;padding:13px 15px;
+  font-size:14px;font-weight:650;
+  color:#b8cbf9;gap:13px;
+}
+.mvp-app .mvp-sidebar .nav-item:hover{background:#ffffff18;color:#fff}
+.mvp-app .mvp-sidebar .nav-item.active{
+  background:linear-gradient(100deg,#2e75ff,#1851e6);
+  box-shadow:inset 3px 0 #9dccff,0 9px 20px #031e6060;
+  color:#fff;
+}
+.mvp-app .mvp-sidebar .nav-item b{
+  background:#fff;color:#134bc7;border-radius:99px;
+  font-size:10px;padding:2px 6px;margin-left:auto;
+}
+.mvp-app .mvp-sidebar .profile{
+  background:#ffffff10;border:1px solid #ffffff24;border-radius:14px;
+  padding:13px 10px;color:#fff;margin-bottom:10px
+}
+.mvp-app .mvp-sidebar .profile small{color:#a5c0fa}
+.mvp-app .mvp-sidebar .profile svg{color:#9bc2ff}
+.mvp-app .mvp-sidebar .profile .avatar{
+  background:#dbe7ff;border:2px solid #719cf1;color:#2255bd;
+}
+.mvp-app .main-shell{background:#f4f7ff}
+.mvp-app .mvp-topbar{
+  min-height:70px;height:70px;padding:0 27px;
+  background:#fff;border-bottom:1px solid #e6edfc;
+  box-shadow:0 2px 13px #2852af06;
+}
+.mvp-app .mvp-topbar .breadcrumb strong{color:#25365d;font-size:14px}
+.mvp-app .mvp-topbar .connection{color:#277e61;font-weight:650}
+.mvp-app .mvp-topbar .connection>span{background:#17b777;box-shadow:0 0 0 4px #dff8ed}
+.mvp-app .icon-button{color:#6b82af;border-radius:11px}
+.mvp-app .icon-button:hover{background:#edf3ff;color:#1756ed}
+.mvp-app .mvp-inbox{background:#f5f8ff}
+.mvp-app .mvp-inbox .chat-list{
+  width:376px;background:#fff;
+  border-right:1px solid #dfe7f8;
+  box-shadow:5px 0 22px #294f9b08
+}
+.mvp-app .mobile-chats-heading{padding:24px 19px 12px;gap:12px}
+.mvp-app .mobile-chats-heading strong{
+  font-size:25px;letter-spacing:-1px;font-weight:800;color:#17244b;
+}
+.mvp-app .mobile-chats-heading small{font-size:11px;color:#8b9ab7}
+.mvp-app .new-conversation-button{
+  margin-left:auto;width:42px;height:42px;
+  background:linear-gradient(145deg,#327cff,#1555f5);
+  color:#fff;border:0;border-radius:14px;
+  box-shadow:0 6px 16px #1555f529;
+}
+.mvp-app .new-conversation-button:hover{background:#0840d5;color:white}
+.mvp-app .mvp-inbox .chat-list-search{
+  margin:7px 16px 12px;padding:12px 13px;
+  background:#f3f6fe;color:#778bad;
+  border:1px solid #e3ebfb;border-radius:13px;
+}
+.mvp-app .mvp-inbox .chat-list-search:focus-within{
+  background:#fff;border-color:#9bbaff;box-shadow:0 0 0 3px #1555f516
+}
+.mvp-app .mvp-inbox .chat-list-search input{font-size:13px;color:#1e315c}
+.mvp-app .mvp-inbox .chat-list-search input::placeholder{color:#92a0be}
+.mvp-app .chat-view-tabs{
+  display:flex;align-items:center;gap:7px;
+  border-bottom:1px solid #e6ebf8;
+  padding:0 17px 12px;
+  min-height:44px;background:#fff;
+}
+.mvp-app .chat-view-tabs button{
+  display:flex;align-items:center;gap:6px;
+  min-height:35px;padding:8px 15px;
+  color:#7182a2;background:#f5f7fd;
+  border:1px solid #eff2fa;border-radius:999px;
+  font-size:12px;font-weight:650;
+}
+.mvp-app .chat-view-tabs button:hover{background:#eaf0ff;color:#1b55dc}
+.mvp-app .chat-view-tabs button.selected{
+  background:linear-gradient(120deg,#2b75fb,#1553ed);
+  border-color:#286cf5;color:#fff;
+  box-shadow:0 4px 12px #1255ed1d;
+}
+.mvp-app .chat-filter-count{
+  min-width:19px;height:19px;display:grid;place-items:center;
+  border-radius:999px;background:#dfe9ff;color:#1e55ce;
+  font-size:10px;padding:0 4px;
+}
+.mvp-app .chat-view-tabs button.selected .chat-filter-count{background:#ffffff34;color:#fff}
+.mvp-app .mvp-inbox .conversation-scroll{scrollbar-color:#b8c9e8 transparent}
+.mvp-app .mvp-inbox .conversation{
+  min-height:82px;gap:13px;
+  padding:15px 17px;
+  background:#fff;
+  border-bottom:1px solid #dce5f3;
+  box-shadow:inset 0 -1px 0 #fff;
+}
+.mvp-app .mvp-inbox .conversation:last-child{border-bottom:0}
+.mvp-app .mvp-inbox .conversation:hover{background:#f3f7ff}
+.mvp-app .mvp-inbox .conversation.selected{
+  background:linear-gradient(95deg,#e9f1ff,#f3f7ff);
+  border-bottom-color:#d2dffa;
+  box-shadow:inset 0 -1px 0 #e0eaff;
+}
+.mvp-app .mvp-inbox .conversation.selected::before{background:#1557ed;width:4px}
+.mvp-app .mvp-inbox .conversation .avatar{
+  width:48px;height:48px;border-radius:16px;
+  background:#dae8ff;color:#2363d7;
+  font-weight:790;border:1px solid #d4e5ff;
+}
+.mvp-app .mvp-inbox .conversation .avatar.color-1{background:#f3e6fb;color:#9655be;border-color:#f1e1fa}
+.mvp-app .mvp-inbox .conversation .avatar.color-2{background:#fff0de;color:#bb7751;border-color:#fde5cb}
+.mvp-app .mvp-inbox .conversation .avatar.color-3{background:#e1f3f5;color:#238994;border-color:#cdebed}
+.mvp-app .mvp-inbox .conversation-title strong{color:#1e2d53;font-size:14px;font-weight:740}
+.mvp-app .mvp-inbox .conversation-title time{font-size:10px;color:#8194b3}
+.mvp-app .mvp-inbox .conversation-preview p{font-size:12px;color:#7c8eae;line-height:1.45}
+.mvp-app .mvp-inbox .unread{background:#1959f5;color:#fff;box-shadow:0 2px 6px #1754f527}
+.mvp-app .chat-panel{background:#f3f6fc}
+.mvp-app .chat-header{
+  min-height:74px;background:#fff;
+  border-bottom:1px solid #e3eaf7;padding:10px 22px;
+}
+.mvp-app .chat-header .avatar{
+  border-radius:15px;background:#e2edff;color:#2860d6;border:1px solid #d5e5ff;
+}
+.mvp-app .contact-heading strong{color:#1b2a52;font-size:16px}
+.mvp-app .chat-header .customer-phone{color:#788bad;font-size:11px}
+.mvp-app .chat-menu{border-color:#e0e8fb;border-radius:13px;box-shadow:0 19px 45px #182d6650}
+.mvp-app .chat-menu button{color:#39517e}
+.mvp-app .chat-menu button:hover{background:#f1f5ff}
+.mvp-app .messages{
+  background-color:#eef4ff;
+  background-image:
+    radial-gradient(circle at 1px 1px,#93b5fa15 1px,transparent 1.6px),
+    linear-gradient(155deg,#f8faff,#edf4ff 65%,#f6f8ff);
+  background-size:26px 26px,auto;
+  padding:21px 35px 30px;scrollbar-color:#b4c8ed transparent;
+}
+.mvp-app .chat-security{
+  background:#fffdfdec;color:#7890b6;
+  border:1px solid #e4ecfa;
+  box-shadow:0 3px 13px #1b4bab09;border-radius:999px;
+}
+.mvp-app .chat-security svg{color:#2b70f5}
+.mvp-app .date-divider{color:#5f7cba;background:#e1eafd;border:1px solid #d8e3f9}
+.mvp-app .message-row{margin:11px 0}
+.mvp-app .message-bubble{
+  background:#fff;border:1px solid #e6ecf9;
+  box-shadow:0 3px 13px #1c3d780b;
+  border-radius:16px 16px 16px 5px;
+}
+.mvp-app .message-bubble.out{
+  background:#e0f5e7;
+  border-color:#ccebd8;
+  border-radius:16px 16px 5px 16px;
+}
+.mvp-app .message-bubble p{color:#25304b;font-size:14px;line-height:1.53}
+.mvp-app .message-meta{color:#8d9bbb}
+.mvp-app .message-meta .read{color:#215de9}
+.mvp-app .compact-composer-wrap{
+  background:#fff;padding:13px 20px 15px;border-top:1px solid #dfe7f6;
+}
+.mvp-app .compact-composer-wrap .composer{
+  min-height:55px;padding:7px 10px;
+  background:#f7f9fe;border:1px solid #e0e8f8;border-radius:17px;
+  box-shadow:0 4px 16px #1b428911;
+}
+.mvp-app .composer:focus-within{background:#fff;border-color:#a3bfff;box-shadow:0 0 0 3px #1759e516}
+.mvp-app .composer>input{color:#233559;font-size:14px}
+.mvp-app .composer>input::placeholder{color:#8da1c4}
+.mvp-app .composer .send-button{
+  background:linear-gradient(145deg,#357fff,#1351ed);
+  border-radius:13px;box-shadow:0 5px 13px #2056ef44;
+}
+.mvp-app .composer .send-button:hover{background:#0e3fc4}
+.mvp-app .reply-route{background:#fbfcff;border-color:#e5ebf8;color:#667fa8}
+.mvp-app .reply-route select{
+  color:#2851a9;background:#f8faff;border-color:#dce6f9;border-radius:10px;
+}
+.mvp-app .inbox-empty{background:linear-gradient(155deg,#f9fbff,#edf3ff);color:#7d90b1}
+.mvp-app .inbox-empty svg{color:#2868f2}
+.mvp-app .mobile-nav{
+  background:#fff;border-top:1px solid #e1e8f8;
+  box-shadow:0 -5px 20px #1d41920d;
+}
+.mvp-app .mobile-nav>button{color:#7e8eaf}
+.mvp-app .mobile-nav>button.active{color:#1555f5;font-weight:750}
+.mvp-app .mobile-nav>button.active svg{stroke-width:2.6}
+.mvp-app .mvp-page{background:linear-gradient(160deg,#f8faff,#f0f5ff)}
+.mvp-app .simple-page-header h1,.mvp-app .subpage-header h1{color:#192b55;letter-spacing:-.8px}
+.mvp-app .simple-page-header p,.mvp-app .subpage-header p{color:#8394b7}
+.mvp-app .primary{
+  background:#1555f5;border-color:#1555f5;border-radius:11px;
+  box-shadow:0 6px 13px #164def20;color:#fff;font-weight:650;
+}
+.mvp-app .primary:hover{background:#0d43c7}
+.mvp-app .secondary{border-color:#dce6fa;color:#315eaf;border-radius:11px}
+.mvp-app .secondary:hover{background:#eef3ff}
+.mvp-app .contacts-list,.mvp-app .more-list{
+  border:1px solid #e0e8f9;border-radius:16px;
+  box-shadow:0 12px 38px #21439b0a;overflow:hidden;
+}
+.mvp-app .contact-list-item,.mvp-app .more-list>button{
+  min-height:73px;border-color:#eaf0fb;padding:17px 20px;
+}
+.mvp-app .contact-list-item:hover,.mvp-app .more-list>button:hover{background:#f4f7ff}
+.mvp-app .contact-list-item .avatar{background:#e1edff;color:#2b64dd}
+.mvp-app .contact-list-item b,.mvp-app .more-list b{font-size:14px;color:#273759}
+.mvp-app .contact-list-item small,.mvp-app .more-list small{font-size:11px;color:#8397b8}
+.mvp-app .more-list>button>svg:first-child{
+  color:#1557f3;
+  background:#edf3ff;padding:10px;width:44px;height:44px;border-radius:13px;
+}
+.mvp-app .more-list>button>svg:last-child{color:#93a9cc}
+.mvp-app .settings-form.card,.mvp-app .connection-row{
+  border:1px solid #e1e9fb;border-radius:14px;
+  box-shadow:0 9px 26px #2a59a50c;background:#fff;
+}
+.mvp-app .settings-form input:focus,.mvp-app .settings-form textarea:focus,
+.mvp-app .settings-form select:focus{border-color:#8cafff}
+.mvp-app .connection-row-icon{background:#eaf1ff;color:#1556ef}
+.mvp-app .connection-badge{background:#e7f7ee;color:#1c8454}
+.mvp-app .connection-badge.default{background:#eaf0ff;color:#275cd5}
+.mvp-app .contact-info-sheet{background:#f4f7ff}
+.mvp-app .contact-info-hero{background:linear-gradient(#edf4ff 0,#fff 70%)}
+.mvp-app .contact-info-hero .avatar{background:#e2ecff;color:#1a54d5}
+.mvp-app .contact-info-sheet>section{border-color:#e7edf8}
+.mvp-app .contact-info-sheet .tags span{background:#e8efff;color:#255aca}
+.mvp-app .shared-product{border-color:#e3eaf8}
+.mvp-app .shared-product .product-price{color:#1651e0}
+.mvp-app .chat-photo-button{background:#e3edff}
+.mvp-app .chat-photo{background:linear-gradient(145deg,#e9f1ff,#dfe9fc)}
+.mvp-app .chat-photo-unavailable{background:#edf3ff;border-color:#b9ccf1;color:#5e75a3}
+.mvp-app .chat-photo-unavailable .photo-retry{border-color:#b9cbf4;color:#2356b5}
+/* Password-only sign in, not fake WhatsApp/OTP onboarding. */
+.login{
+  color:#172650;
+  background:
+    radial-gradient(circle at 14% 12%,#a5c7ff66,transparent 37%),
+    radial-gradient(circle at 83% 90%,#9eb6ff55,transparent 33%),
+    linear-gradient(145deg,#f8fbff,#eef3ff 70%,#e9efff);
+}
+.login-card{
+  background:#fffffff5;border:1px solid #e4eafa;
+  border-radius:24px;padding:47px 42px;
+  box-shadow:0 25px 80px #254f9830,0 3px 12px #3766ad0c;
+}
+.login-card .brand{font-size:27px;letter-spacing:-.9px;color:#1a2a53}
+.login-card .brand b{color:#1453ee}
+.login-card .brand-icon{
+  width:47px;height:47px;border-radius:15px;
+  background:linear-gradient(145deg,#4789ff,#174cf0);
+  box-shadow:0 8px 18px #1f57f238;
+}
+.login-card h1{font-size:29px;font-weight:800;letter-spacing:-1px;color:#17244b}
+.login-card .login-copy{color:#7d8fac;line-height:1.65}
+.login-card form>label{font-size:12px;color:#445e90;font-weight:680}
+.password-field{border-color:#dfe8fb;border-radius:12px;background:#f8faff}
+.password-field:focus-within{border-color:#7ba4ff;outline:3px solid #1555f51c}
+.password-field input{color:#1a2b55}
+.login-card .password-toggle{color:#6b85b4}
+.login-card .primary{background:#1555f5;border-color:#1555f5;border-radius:12px;
+  box-shadow:0 8px 17px #1555f534;font-size:14px;font-weight:740
+}
+.login-card .primary:hover{background:#1047d9}
+.login-card .login-footer{color:#8899b9}
+.login-card .login-footer svg{color:#1760ef}
+.loading .brand-icon{background:#1555f5}
+.loading h2{color:#526da7}
+@media(max-width:1000px) and (min-width:701px){
+  .mvp-app .mvp-sidebar{width:78px;padding:23px 7px}
+  .mvp-app .mvp-inbox .chat-list{width:315px}
+}
+@media(max-width:700px){
+  .mvp-app .mvp-topbar{height:65px;min-height:65px;padding:0 15px}
+  .mvp-app .mvp-topbar .mobile-brand{
+    display:flex;align-items:center;gap:7px;
+    font-size:21px;font-weight:760;letter-spacing:-.7px;color:#1b2a53
+  }
+  .mvp-app .mvp-topbar .mobile-brand b{color:#1556f5}
+  .mvp-app .mobile-brand-icon{
+    display:grid;place-items:center;width:32px;height:32px;flex:none;
+    color:#fff;background:linear-gradient(135deg,#438fff,#1755ee);
+    box-shadow:0 4px 11px #1758ec28;border-radius:11px;
+  }
+  .mvp-app .mvp-inbox .chat-list{width:100%;box-shadow:none}
+  .mvp-app .mobile-chats-heading{padding:17px 17px 9px}
+  .mvp-app .mobile-chats-heading strong{font-size:24px}
+  .mvp-app .mvp-inbox .chat-list-search{margin:8px 13px 11px;padding:12px 13px}
+  .mvp-app .mvp-inbox .chat-list-search input{font-size:16px}
+  .mvp-app .chat-view-tabs{padding:0 14px 11px;gap:7px}
+  .mvp-app .chat-view-tabs button{font-size:12px;min-height:34px;padding:7px 13px}
+  .mvp-app .mvp-inbox .conversation{
+    padding:14px 15px;min-height:78px;border-bottom-color:#dce5f3
+  }
+  .mvp-app .mvp-inbox .conversation .avatar{width:48px;height:48px;border-radius:16px}
+  .mvp-app .mvp-inbox .conversation-title strong{font-size:15px}
+  .mvp-app .mvp-inbox .conversation-preview p{font-size:12px}
+  .mvp-app .chat-header{min-height:64px;padding:8px 9px}
+  .mvp-app .chat-header .avatar{width:39px;height:39px;border-radius:13px}
+  .mvp-app .contact-heading strong{font-size:15px}
+  .mvp-app .chat-header .customer-phone{font-size:11px}
+  .mvp-app .messages{padding:12px 12px 22px!important}
+  .mvp-app .message-bubble{max-width:88%;padding:10px 11px 7px}
+  .mvp-app .message-bubble p{font-size:14px}
+  .mvp-app .compact-composer-wrap{
+    padding:8px 9px max(10px,env(safe-area-inset-bottom))
+  }
+  .mvp-app .compact-composer-wrap .composer{min-height:49px;padding:5px 6px}
+  .mvp-app .composer>input{font-size:16px}
+  .mvp-app .composer .send-button{width:39px;min-width:39px;height:39px}
+  .mvp-app .mobile-nav{min-height:68px;height:68px;padding-bottom:env(safe-area-inset-bottom)}
+  .mvp-app .mobile-nav>button{font-size:11px;font-weight:650}
+  .mvp-app .mvp-page{padding:23px 15px 84px}
+  .mvp-app .simple-page-header h1,.mvp-app .subpage-header h1{font-size:25px}
+  .mvp-app .contacts-list,.mvp-app .more-list{margin:0 -15px;border-radius:0;border-left:0;border-right:0}
+  .mvp-app .contact-list-item,.mvp-app .more-list>button{padding:15px 17px}
+  .mvp-app .connection-row{border-radius:0;border-left:0;border-right:0}
+  .login-card{padding:36px 24px;border-radius:20px}
+  .login-card h1{font-size:27px}
+  .login-card .brand{font-size:25px}
+  .login-card .password-field input{font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){
+  .mvp-app .icon-button,.mvp-app .chat-view-tabs button{transition:none}
+}
