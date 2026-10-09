@@ -487,3 +487,31 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   }
   .mvp-app.chats-page .mobile-nav button{min-height:54px}
 }
+
+
+/* Compact app brand: a slim one-line label, not another large heading. */
+.mvp-app .mobile-inbox-mini-brand{display:none}
+@media(max-width:700px){
+  .mvp-app.chats-page .mobile-inbox-mini-brand{
+    display:flex;align-items:center;gap:6px;
+    height:31px;min-height:31px;flex:0 0 31px;
+    padding:3px 14px 0;background:#fff;
+    color:#24416f;font-size:13px;font-weight:690;letter-spacing:-.2px;
+  }
+  .mvp-app.chats-page .mobile-inbox-mini-brand b{color:#1555f5}
+  .mvp-app.chats-page .mobile-inbox-mini-brand .mobile-mini-logo{
+    display:grid;place-items:center;width:21px;height:21px;
+    color:#fff;border-radius:7px;background:#1555f5
+  }
+  .mvp-app.chats-page .mobile-inbox-mini-brand small{
+    font-size:10px;font-weight:500;color:#91a1c1;margin-left:auto
+  }
+  /* IMPORTANT: the compact list's higher-specificity display:flex rule
+     must never override mobile-chat's hide-list/show-conversation state. */
+  .mvp-app.chats-page.mobile-chat .mvp-inbox .chat-list{display:none}
+  .mvp-app.chats-page.mobile-chat .mvp-inbox .chat-panel{
+    display:flex;flex:1 1 auto;min-width:0;min-height:0;
+  }
+  .mvp-app.chats-page.mobile-chat .mobile-nav{display:none}
+  .mvp-app.chats-page.mobile-chat .mvp-topbar{display:none}
+}
