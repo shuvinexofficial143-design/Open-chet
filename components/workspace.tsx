@@ -47,6 +47,7 @@ export default function Workspace() {
   const contactsPages=useRef(1);
   const refreshQueue=useRef<ReturnType<typeof createRefreshQueue<Data>>|null>(null);
   const [query, setQuery] = useState('');
+  const [chatFilter, setChatFilter] = useState<'all' | 'unread'>('all');
   const [draft, setDraft] = useState('');
   const [chatSearch, setChatSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -418,7 +419,9 @@ export default function Workspace() {
   const messagingWindowOpen = messagingOpen(conversation?.last_inbound_at || null);
   const manager = canManage(data.role);
   const admin = canAdmin(data.role);
+  const unreadConversations = data.conversations.filter((item) => item.unread > 0).length;
   const visibleConversations = data.conversations.filter((item) => {
+    if (chatFilter === 'unread' && item.unread <= 0) return false;
     const person = data.contacts.find((candidate) => candidate.id === item.contact_id);
     return [person?.name, person?.phone, person?.company, item.preview].join(' ').toLowerCase().includes(query.toLowerCase());
   }).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -444,14 +447,18 @@ export default function Workspace() {
       <div className="sidebar-bottom"><button className="profile" onClick={() => navigate('More')}><span className="avatar small">{initials(data.members.find((member) => member.id === data.user_id)?.name || 'You')}</span><span><strong>{data.members.find((member) => member.id === data.user_id)?.name || 'You'}</strong><small>{data.role}</small></span><Settings size={17}/></button></div>
     </aside>
     <div className="main-shell">
-      <header className="topbar mvp-topbar"><div className="mobile-brand">Open Chet</div><div className="breadcrumb"><strong>{page}</strong></div><div className="topbar-right"><span className={`connection ${demo ? 'demo' : ''}`}><span/>{demo ? 'Demo workspace' : data.connection?.whatsapp ? 'WhatsApp connected' : 'Setup needed'}</span><button className="icon-button" aria-label="Notifications" onClick={() => setShowNotifications((value) => !value)}><Bell size={20}/></button></div></header>
+      <header className="topbar mvp-topbar"><div className="mobile-brand"><span className="mobile-brand-icon"><MessageSquare size={17}/></span>Open <b>Chet</b></div><div className="breadcrumb"><strong>{page}</strong></div><div className="topbar-right"><span className={`connection ${demo ? 'demo' : ''}`}><span/>{demo ? 'Demo workspace' : data.connection?.whatsapp ? 'WhatsApp connected' : 'Setup needed'}</span><button className="icon-button" aria-label="Notifications" onClick={() => setShowNotifications((value) => !value)}><Bell size={20}/></button></div></header>
       {demo ? <div className="demo-banner"><span><ShieldCheck size={14}/>Demo data · Messages stay on this device.</span><a href="/login">Connect your business <ArrowRight size={13}/></a></div> : null}
       {showNotifications ? <div className="notifications"><h3>Notifications</h3>{data.notifications.length ? data.notifications.slice(0, 10).map((notification) => <p key={notification.id}>{notification.body}</p>) : <p>You’re all caught up.</p>}<button className="link" onClick={() => act({type: 'notify_read'})}>Mark all as read</button></div> : null}
 
       {page === 'Chats' ? <main className="inbox mvp-inbox">
         <section className="chat-list">
-          <div className="mobile-chats-heading"><span><strong>Messages</strong><small>{data.conversations.length} conversations</small></span><button className="icon-button new-conversation-button" aria-label="New conversation" onClick={() => setDialog({type: 'new-chat'})}><Plus size={20}/></button></div>
-          <div className="search chat-list-search"><Search size={18}/><input placeholder="Search chats…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
+          <div className="mobile-chats-heading"><span><strong>Chats</strong><small>{data.conversations.length} customer conversations</small></span><button className="icon-button new-conversation-button" aria-label="New conversation" onClick={() => setDialog({type: 'new-chat'})}><Plus size={20}/></button></div>
+          <div className="search chat-list-search"><Search size={18}/><input placeholder="Search customers or messages…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
+          <div className="chat-view-tabs" role="group" aria-label="Filter chats">
+            <button type="button" className={chatFilter === 'all' ? 'selected' : ''} aria-pressed={chatFilter === 'all'} onClick={() => setChatFilter('all')}>All chats</button>
+            <button type="button" className={chatFilter === 'unread' ? 'selected' : ''} aria-pressed={chatFilter === 'unread'} onClick={() => setChatFilter('unread')}>Unread {unreadConversations > 0 ? <span className="chat-filter-count">{unreadConversations}</span> : null}</button>
+          </div>
           <div className="conversation-scroll">{visibleConversations.map((item) => {
             const person = data.contacts.find((candidate) => candidate.id === item.contact_id);
             const displayName = person?.name || person?.phone || 'Unknown contact';
