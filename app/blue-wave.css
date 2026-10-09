@@ -376,3 +376,40 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(prefers-reduced-motion:reduce){
   .mvp-app .icon-button,.mvp-app .chat-view-tabs button{transition:none}
 }
+
+
+/* Visible, review-first approved-template pathway for closed WhatsApp windows. */
+.mvp-app .paid-template-banner{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  margin-bottom:11px;padding:12px 15px;
+  border:1px solid #cfdefb;border-radius:14px;
+  background:linear-gradient(100deg,#eef4ff,#f9fbff);
+}
+.mvp-app .paid-template-banner-copy{display:flex;align-items:flex-start;gap:10px;min-width:0;color:#3564c5}
+.mvp-app .paid-template-banner-copy>svg{flex-shrink:0;margin-top:4px}
+.mvp-app .paid-template-banner-copy span{display:flex;flex-direction:column;gap:3px}
+.mvp-app .paid-template-banner-copy strong{font-size:13px;color:#273b74;line-height:1.35}
+.mvp-app .paid-template-banner-copy small{font-size:11px;color:#7286ae;line-height:1.45}
+.mvp-app .paid-template-action{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  border:0;border-radius:11px;white-space:nowrap;
+  background:#1555f5;color:#fff;font-size:12px;font-weight:720;
+  padding:11px 15px;min-height:39px;
+  box-shadow:0 4px 10px #1858e42d;
+}
+.mvp-app .paid-template-action:hover{background:#1044c6}
+.mvp-app .paid-template-action:disabled{opacity:.5;cursor:not-allowed}
+.mvp-app .template-guidance{
+  background:#eef4ff;border:1px solid #dce7ff;border-radius:11px;
+  padding:12px 13px;margin:0 0 15px;color:#486291;font-size:12px;line-height:1.6
+}
+.mvp-app .template-empty{display:grid;gap:11px;padding:18px 12px;text-align:center;color:#647da5}
+.mvp-app .template-empty p{font-size:13px}
+.mvp-app .template-empty small{font-size:11px;line-height:1.5}
+.mvp-app .template-empty button{justify-self:center}
+@media(max-width:700px){
+  .mvp-app .paid-template-banner{padding:11px;gap:10px;flex-wrap:wrap}
+  .mvp-app .paid-template-banner-copy strong{font-size:12px}
+  .mvp-app .paid-template-banner-copy small{font-size:10px}
+  .mvp-app .paid-template-action{width:100%;padding:11px 12px;font-size:13px}
+}
