@@ -167,7 +167,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .mvp-app .mvp-inbox .conversation-title time{font-size:10px;color:#8194b3}
 .mvp-app .mvp-inbox .conversation-preview p{font-size:12px;color:#7c8eae;line-height:1.45}
 .mvp-app .mvp-inbox .unread{background:#1959f5;color:#fff;box-shadow:0 2px 6px #1754f527}
-.mvp-app .chat-panel{background:#f3f6fc}
+.mvp-app .chat-panel{background:#f0f5ff}
 .mvp-app .chat-header{
   min-height:74px;background:#fff;
   border-bottom:1px solid #e3eaf7;padding:10px 22px;
@@ -180,21 +180,31 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .mvp-app .chat-menu{border-color:#e0e8fb;border-radius:13px;box-shadow:0 19px 45px #182d6650}
 .mvp-app .chat-menu button{color:#39517e}
 .mvp-app .chat-menu button:hover{background:#f1f5ff}
+/*
+  Calm, airy conversation wallpaper: wide overlapping waves instead of the
+  old repeated dot grid. CSS-only, so no heavy images, downloads or parallax.
+*/
 .mvp-app .messages{
-  background-color:#eef4ff;
+  background-color:#f0f5ff;
   background-image:
-    radial-gradient(circle at 1px 1px,#93b5fa15 1px,transparent 1.6px),
-    linear-gradient(155deg,#f8faff,#edf4ff 65%,#f6f8ff);
-  background-size:26px 26px,auto;
-  padding:21px 35px 30px;scrollbar-color:#b4c8ed transparent;
+    radial-gradient(ellipse 94% 54% at 110% -12%, rgba(157,191,255,.32) 0%, rgba(183,207,255,.12) 60%, transparent 79%),
+    radial-gradient(ellipse 96% 59% at -20% 108%, rgba(141,183,255,.26) 0%, rgba(193,216,255,.11) 59%, transparent 80%),
+    radial-gradient(ellipse 88% 62% at 114% 112%, transparent 55%, rgba(133,175,250,.095) 56%, rgba(133,175,250,.095) 69%, transparent 70%),
+    radial-gradient(ellipse 92% 70% at -22% -23%, transparent 57%, rgba(174,203,253,.13) 58%, rgba(174,203,253,.13) 71%, transparent 72%),
+    linear-gradient(150deg,#fafcff 0%,#eef4ff 50%,#f5f9ff 100%);
+  background-size:100% 100%;
+  background-repeat:no-repeat;
+  background-position:center;
+  padding:21px 35px 30px;
+  scrollbar-color:#b4c8ed transparent;
 }
 .mvp-app .chat-security{
-  background:#fffdfdec;color:#7890b6;
-  border:1px solid #e4ecfa;
-  box-shadow:0 3px 13px #1b4bab09;border-radius:999px;
+  background:#ffffffef;color:#7188b1;
+  border:1px solid #e2eafd;
+  box-shadow:0 5px 18px #2850a70e;border-radius:999px;
 }
 .mvp-app .chat-security svg{color:#2b70f5}
-.mvp-app .date-divider{color:#5f7cba;background:#e1eafd;border:1px solid #d8e3f9}
+.mvp-app .date-divider{color:#5677ba;background:#e5edffed;border:1px solid #d4e2fd;box-shadow:0 3px 11px #2b50a20b}
 .mvp-app .message-row{margin:11px 0}
 .mvp-app .message-bubble{
   background:#fff;border:1px solid #e6ecf9;
@@ -210,7 +220,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .mvp-app .message-meta{color:#8d9bbb}
 .mvp-app .message-meta .read{color:#215de9}
 .mvp-app .compact-composer-wrap{
-  background:#fff;padding:13px 20px 15px;border-top:1px solid #dfe7f6;
+  background:linear-gradient(180deg,#fffffffa,#f9fbff);
+  padding:13px 20px 15px;
+  border-top:1px solid #e0e9fb;
+  box-shadow:0 -5px 25px #2f60b812;
 }
 .mvp-app .compact-composer-wrap .composer{
   min-height:55px;padding:7px 10px;
