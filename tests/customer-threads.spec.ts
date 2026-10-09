@@ -17,9 +17,15 @@ test('one customer stays one chat across both routes and refresh on desktop/mobi
   await expect(customer).toHaveCount(1);await expect(customer.locator('.unread')).toHaveText('5');
   await customer.click();
   await expect(page.locator('.message-bubble')).toHaveCount(4);
-  await expect(page.getByLabel('Reply via WhatsApp number')).toHaveValue('second-route');
-  await page.getByLabel('Reply via WhatsApp number').selectOption(first.id);
-  await expect(page.getByLabel('Reply via WhatsApp number')).toHaveValue(first.id);
+  // Keep the default last-inbound route for delivery without showing business
+  // phone numbers or asking the user to select a route in the chat UI.
+  await expect(page.getByLabel('Reply via WhatsApp number')).toHaveCount(0);
+  await expect(page.locator('.reply-route')).toHaveCount(0);
+  const customerHeader = page.locator('.chat-header .contact-heading');
+  await expect(customerHeader.locator('.customer-phone')).toHaveText(data.contacts[0].phone);
+  await expect(customerHeader).not.toContainText('+91 90000 00001');
+  await expect(customerHeader).not.toContainText('+91 90000 00002');
+  await expect(page.getByRole('button',{name:'Send message'})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.reload();await customer.click();
   await expect(customer).toHaveCount(1);await expect(page.locator('.message-bubble')).toHaveCount(4);
