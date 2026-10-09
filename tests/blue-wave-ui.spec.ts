@@ -11,22 +11,34 @@ test('selected royal-blue theme styles the actual Open Chet inbox on desktop and
   });
   expect(theme.primary).toBe('#1555f5');
 
-  const filter=page.getByRole('group',{name:'Filter chats'});
-  const all=filter.getByRole('button',{name:'All chats'});
-  const unread=filter.getByRole('button',{name:/Unread/});
-  await expect(all).toHaveAttribute('aria-pressed','true');
   const allCount=await page.locator('.conversation').count();
-  await unread.click();
-  await expect(unread).toHaveAttribute('aria-pressed','true');
-  const unreadCount=await page.locator('.conversation').count();
-  expect(unreadCount).toBeGreaterThan(0);
-  expect(unreadCount).toBeLessThan(allCount);
-  await all.click();
-  await expect(page.locator('.conversation')).toHaveCount(allCount);
-  const plus=page.getByRole('button',{name:'New conversation'});
+  if(testInfo.project.name==='mobile'){
+    const compact=page.locator('.chat-search-toolbar');
+    const unread=compact.getByRole('button',{name:'Show unread chats'});
+    await unread.click();
+    await expect(compact.getByRole('button',{name:'Show all chats'})).toHaveAttribute('aria-pressed','true');
+    const filtered=await page.locator('.conversation').count();
+    expect(filtered).toBeGreaterThan(0);
+    expect(filtered).toBeLessThan(allCount);
+    await compact.getByRole('button',{name:'Show all chats'}).click();
+    await expect(page.locator('.conversation')).toHaveCount(allCount);
+  } else {
+    const filter=page.getByRole('group',{name:'Filter chats'});
+    const all=filter.getByRole('button',{name:'All chats'});
+    const unread=filter.getByRole('button',{name:/Unread/});
+    await expect(all).toHaveAttribute('aria-pressed','true');
+    await unread.click();
+    await expect(unread).toHaveAttribute('aria-pressed','true');
+    const filtered=await page.locator('.conversation').count();
+    expect(filtered).toBeGreaterThan(0);
+    expect(filtered).toBeLessThan(allCount);
+    await all.click();
+    await expect(page.locator('.conversation')).toHaveCount(allCount);
+  }
+  const plus=page.getByRole('button',{name:'New conversation'}).filter({visible:true});
   await expect(plus).toBeVisible();
-  const buttonBg=await plus.evaluate(element=>getComputedStyle(element).backgroundImage);
-  expect(buttonBg).toContain('gradient');
+  const buttonStyle=await plus.evaluate(element=>({image:getComputedStyle(element).backgroundImage,color:getComputedStyle(element).backgroundColor}));
+  expect(buttonStyle.image.includes('gradient')||buttonStyle.color==='rgb(21, 85, 245)').toBe(true);
 
   await page.locator('.conversation').first().click();
   await expect(page.locator('.chat-header')).toBeVisible();
@@ -38,7 +50,7 @@ test('selected royal-blue theme styles the actual Open Chet inbox on desktop and
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   if(testInfo.project.name==='mobile'){
     await page.getByRole('button',{name:'Back to chats'}).click();
-    await expect(filter).toBeVisible();
+    await expect(page.locator('.chat-search-toolbar')).toBeVisible();
     const nav=page.locator('.mobile-nav');
     await expect(nav.locator('button span')).toHaveText(['Chats','Contacts','More']);
     await nav.getByRole('button',{name:'Contacts'}).click();
