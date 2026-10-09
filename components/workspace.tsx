@@ -456,6 +456,7 @@ export default function Workspace() {
       {page === 'Chats' ? <main className="inbox mvp-inbox">
         <section className="chat-list">
           <div className="mobile-chats-heading"><span><strong>Chats</strong><small>{data.conversations.length} customer conversations</small></span><button className="icon-button new-conversation-button" aria-label="New conversation" onClick={() => setDialog({type: 'new-chat'})}><Plus size={20}/></button></div>
+          <div className="mobile-inbox-mini-brand"><span className="mobile-mini-logo"><MessageSquare size={14}/></span><span>Open <b>Chet</b></span><small>Chats</small></div>
           <div className="chat-search-toolbar">
             <div className="search chat-list-search"><Search size={18}/><input placeholder="Search chats…" aria-label="Search chats" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
             <div className="mobile-search-actions">
