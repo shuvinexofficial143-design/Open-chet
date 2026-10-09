@@ -29,3 +29,4 @@ jobs:
       - run: npx playwright test tests/inbox-customer-header.spec.ts --project=mobile --project=desktop
       - run: npx playwright test tests/blue-wave-ui.spec.ts --project=mobile --project=desktop
       - run: npx playwright test tests/customer-threads.spec.ts --project=mobile --project=desktop
+      - run: npx playwright test tests/mobile-compact-contact-removal.spec.ts --project=mobile --project=desktop
