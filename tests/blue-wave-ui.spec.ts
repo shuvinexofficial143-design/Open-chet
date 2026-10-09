@@ -70,8 +70,9 @@ test('blue chat wallpaper uses subtle layered waves with no repeating dot grid',
   });
   expect(style.image.match(/radial-gradient/g)?.length).toBe(4);
   expect(style.image).not.toContain('1px 1px');
-  expect(style.size).toBe('100% 100%');
-  expect(style.repeat).toBe('no-repeat');
+  expect(style.size.split(', ').length).toBe(5);
+  expect(style.size.split(', ').every(layer => layer === '100% 100%')).toBe(true);
+  expect(style.repeat.split(', ').every(layer => layer === 'no-repeat')).toBe(true);
   await expect(page.locator('.message-bubble').first()).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
