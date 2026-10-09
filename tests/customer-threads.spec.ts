@@ -30,3 +30,25 @@ test('one customer stays one chat across both routes and refresh on desktop/mobi
   await page.reload();await customer.click();
   await expect(customer).toHaveCount(1);await expect(page.locator('.message-bubble')).toHaveCount(4);
 });
+
+
+test('a closed 24-hour WhatsApp window offers a visible paid template, not a disabled dead-end',async({page})=>{
+  const data=demoData();
+  data.conversations[0].last_inbound_at=new Date(Date.now()-3*24*60*60*1000).toISOString();
+  await page.addInitScript(value=>localStorage.setItem('open-chet-demo-v1',JSON.stringify(value)),data);
+  await page.goto('/?demo=1');
+  await page.locator('.conversation').filter({hasText:'Dr. Arjun Mehta'}).click();
+
+  await expect(page.getByText('24-hour reply window closed')).toBeVisible();
+  await expect(page.getByRole('textbox',{name:'Message'})).toBeDisabled();
+  const cta=page.getByRole('button',{name:'Send paid template'});
+  await expect(cta).toBeVisible();
+  await cta.click();
+
+  const templateDialog=page.getByRole('dialog');
+  await expect(templateDialog.getByText('WhatsApp only permits approved templates')).toBeVisible();
+  await templateDialog.getByRole('button',{name:/welcome_update/}).click();
+  await expect(templateDialog.getByRole('button',{name:'Confirm & send approved template'})).toBeVisible();
+  await expect(templateDialog.getByText('Meta messaging charges may apply')).toBeVisible();
+  // Selecting the template is safe: never submit or charge without explicit confirmation.
+});
