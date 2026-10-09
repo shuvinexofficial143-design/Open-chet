@@ -38,7 +38,6 @@ export default function Workspace() {
   const [page, setPage] = useState<MainPage>('Chats');
   const [moreView, setMoreView] = useState<MoreView>('home');
   const [selected, setSelected] = useState('');
-  const [routeChoice,setRouteChoice]=useState('');
   const [historyMore,setHistoryMore]=useState(false);
   const selectedRef=useRef('');
   const searchRef=useRef('');
@@ -211,7 +210,7 @@ export default function Workspace() {
   }, [dialog, catalogueContext, contactInfoId, showNotifications, showChatMenu, showSearch, mobileChat, page, moreView]);
 
   async function act(action: Action, success?: string) {
-    if(action.type==='send')action={...action,values:{...action.values,route_conversation_id:routeChoice||state.current?.conversations.find(c=>c.id===action.id)?.route_conversation_id}};
+    if(action.type==='send')action={...action,values:{...action.values,route_conversation_id:state.current?.conversations.find(c=>c.id===action.id)?.route_conversation_id}};
     setBusy(true);
     try {
       let next: Data;
@@ -257,7 +256,7 @@ export default function Workspace() {
   }
 
   async function openConversation(id: string) {
-    selectedRef.current=id;historyPages.current=1;setSelected(id);setRouteChoice('');
+    selectedRef.current=id;historyPages.current=1;setSelected(id);
     if (!mobileChat && window.matchMedia('(max-width: 700px)').matches && window.history.state?.openChetChatView !== true) {
       window.history.pushState({...window.history.state, openChetChatView: true}, '');
     }
@@ -282,8 +281,8 @@ export default function Workspace() {
     if ((!draft.trim() && !attachment) || !selected || sending) return;
 
     const conversationId = selected;
-    const routeId=routeChoice||state.current?.conversations.find(c=>c.id===selected)?.route_conversation_id;
-    if(attachment?.route_conversation_id&&attachment.route_conversation_id!==routeId){notify('Choose the attachment’s WhatsApp route or upload it again');return;}
+    const routeId=state.current?.conversations.find(c=>c.id===selected)?.route_conversation_id;
+    if(attachment?.route_conversation_id&&attachment.route_conversation_id!==routeId){notify('This attachment belongs to an earlier connection. Upload it again before sending');return;}
     if(demo){const next=await act({type:'send',id:conversationId,values:{body:draft.trim()||attachment?.name||'',kind:attachment?.kind||'text',media_url:attachment?.media_url}},'Demo message sent');if(next){setDraft('');setAttachment(null);}return;}
     const outgoingBody = draft.trim() || attachment?.name || '';
     const outgoingKind = attachment?.kind || 'text';
@@ -352,7 +351,7 @@ export default function Workspace() {
         const kind = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'document';
         setAttachment({id: crypto.randomUUID(), name: file.name, kind, media_url: URL.createObjectURL(file)});
       } else {
-        const form = new FormData(); form.set('file', file); form.set('conversation_id', selected);form.set('route_conversation_id',routeChoice||state.current?.conversations.find(c=>c.id===selected)?.route_conversation_id||'');
+        const form = new FormData(); form.set('file', file); form.set('conversation_id', selected);form.set('route_conversation_id',state.current?.conversations.find(c=>c.id===selected)?.route_conversation_id||'');
         setAttachment({id: crypto.randomUUID(), ...await api('/api/media', {method: 'POST', body: form})});
       }
     } catch (error) {notify((error as Error).message);} finally {setBusy(false);}
@@ -412,7 +411,7 @@ export default function Workspace() {
   if (!data) return <div className="loading"><span className="brand-icon"><MessageSquare/></span><h2>Opening Open Chet…</h2><a href="/login">Sign in</a></div>;
 
   const thread=data.conversations.find(item=>item.id===selected);
-  const chosenRoute=thread?.routes?.find((r:Row)=>r.id===(routeChoice||thread.route_conversation_id));
+  const chosenRoute=thread?.routes?.find((r:Row)=>r.id===(thread.route_conversation_id));
   const conversation=thread&&chosenRoute&&!demo?{...thread,...chosenRoute,id:thread.id}:thread;
   const contact = data.contacts.find((item) => item.id === conversation?.contact_id);
   const conversationAccount = data.connection?.whatsapp_accounts?.find((account) => account.id === conversation?.whatsapp_account_id);
@@ -484,8 +483,7 @@ export default function Workspace() {
               </div> : null}
             </div>
           </header>
-          {thread&&thread.routes?.length>1?<label className="reply-route">Reply via <select aria-label="Reply via WhatsApp number" value={routeChoice||thread.route_conversation_id} onChange={e=>{setRouteChoice(e.target.value);setAttachment(null);}}>{thread.routes.map((r:Row)=>{const account=data.connection?.whatsapp_accounts.find(a=>a.id===r.whatsapp_account_id);return <option key={r.id} value={r.id} disabled={!account?.is_active}>{account?(account.display_phone_number||account.label)+(account.is_active?'':' · disabled'):'Legacy · route unknown'}</option>;})}</select></label>:null}
-          {conversationAccount&&!conversationAccount.is_active?<div className="window-state">This WhatsApp number is disabled. Select an active route before replying.</div>:null}
+          {conversationAccount&&!conversationAccount.is_active?<div className="window-state">The WhatsApp connection for this conversation is disabled. Re-enable it in More → WhatsApp Connection.</div>:null}
           {showSearch ? <div className="search chat-search"><Search size={16}/><input aria-label="Find in chat" placeholder="Find a message" value={chatSearch} onChange={(event) => setChatSearch(event.target.value)}/><button className="icon-button" onClick={() => {setShowSearch(false); setChatSearch('');}}><X/></button></div> : null}
           <div className="messages">
             {!demo&&historyMore?<button className="secondary load-more" onClick={async()=>{historyPages.current++;try{await reload();}catch{notify('Older messages could not be loaded');}}}>Load older messages</button>:null}
