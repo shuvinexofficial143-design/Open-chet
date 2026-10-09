@@ -37,22 +37,22 @@ export async function GET(req:Request){
       const [org]=await sql`select * from organizations where id=${c.org}`;
       const whatsappAccounts=await sql`select id,label,display_phone_number,verified_name,phone_number_id,business_account_id,is_active,is_default,created_at,updated_at from whatsapp_accounts where organization_id=${c.org} order by is_default desc,created_at,id`;
       const rows=await sql`select *,to_char(updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') cursor_at
-        from customer_threads where organization_id=${c.org}
+        from customer_threads where organization_id=${c.org} and exists (select 1 from contacts visible where visible.id=customer_threads.contact_id and visible.organization_id=${c.org} and visible.removed_at is null)
           and (${search}='' or exists(select 1 from contacts ct where ct.id=customer_threads.contact_id and ct.organization_id=${c.org}
             and concat_ws(' ',ct.name,ct.phone,ct.company,customer_threads.preview) ilike ${pattern}))
           and (${threadBefore}::timestamptz is null or (updated_at,id)<(${threadBefore}::timestamptz,${threadBeforeId}::uuid))
         order by updated_at desc,id desc limit ${limit+1}`;
       const conversations=rows.slice(0,limit),lastPageRow=conversations.at(-1);
       if(focus&&!conversations.some(v=>v.id===focus)){
-        const focused=await sql`select * from customer_threads where organization_id=${c.org} and (id=${focus}::uuid or ${focus}::uuid=any(subthread_ids))`;
+        const focused=await sql`select * from customer_threads where organization_id=${c.org} and exists (select 1 from contacts visible where visible.id=customer_threads.contact_id and visible.organization_id=${c.org} and visible.removed_at is null) and (id=${focus}::uuid or ${focus}::uuid=any(subthread_ids))`;
         for(const item of focused)if(!conversations.some(v=>v.id===item.id))conversations.push(item);
       }
       const ids=conversations.map(v=>v.contact_id);
       const contacts=await sql`select c.*,coalesce((select jsonb_agg(t.name order by t.name)
         from contact_tags ct join tags t on t.id=ct.tag_id and t.organization_id=ct.organization_id
         where ct.contact_id=c.id and ct.organization_id=c.organization_id),'[]') tags
-        from contacts c where c.organization_id=${c.org} and (c.id=any(${ids}::uuid[]) or c.id in(
-          select id from contacts where organization_id=${c.org} and (${search}='' or concat_ws(' ',name,phone,company) ilike ${pattern}) order by name,id limit ${limit} offset ${contactsOffset})) order by c.name,c.id`;
+        from contacts c where c.organization_id=${c.org} and c.removed_at is null and (c.id=any(${ids}::uuid[]) or c.id in(
+          select id from contacts where organization_id=${c.org} and removed_at is null and (${search}='' or concat_ws(' ',name,phone,company) ilike ${pattern}) order by name,id limit ${limit} offset ${contactsOffset})) order by c.name,c.id`;
       const members=await sql`select u.id,u.name,m.role,m.status from organization_members m join users u on u.id=m.user_id where organization_id=${c.org}`;
       const notes=await sql`select n.*,n.conversation_id route_conversation_id,cv.contact_id logical_thread_id
         from notes n join conversations cv on cv.id=n.conversation_id and cv.organization_id=n.organization_id
@@ -63,13 +63,13 @@ export async function GET(req:Request){
           .map(table=>sql`select * from ${sql(table)} where organization_id=${c.org} order by created_at desc,id desc limit ${limit}`));
       const [analytics]=await sql`select (select count(*) from messages where organization_id=${c.org} and direction='out') sent,
         (select count(*) from messages where organization_id=${c.org} and direction='in') received,
-        (select count(*) from customer_threads where organization_id=${c.org}) conversations,
-        (select count(*) from customer_threads where organization_id=${c.org} and mode='ai') ai,
-        (select count(*) from customer_threads where organization_id=${c.org} and mode='human') human,
+        (select count(*) from customer_threads where organization_id=${c.org} and exists (select 1 from contacts visible where visible.id=customer_threads.contact_id and visible.organization_id=${c.org} and visible.removed_at is null)) conversations,
+        (select count(*) from customer_threads where organization_id=${c.org} and exists (select 1 from contacts visible where visible.id=customer_threads.contact_id and visible.organization_id=${c.org} and visible.removed_at is null) and mode='ai') ai,
+        (select count(*) from customer_threads where organization_id=${c.org} and exists (select 1 from contacts visible where visible.id=customer_threads.contact_id and visible.organization_id=${c.org} and visible.removed_at is null) and mode='human') human,
         (select count(*) from messages where organization_id=${c.org} and status in('delivered','read')) delivered,
         (select count(*) from messages where organization_id=${c.org} and status='read') read,
         (select count(*) from audit_logs where organization_id=${c.org} and body='Conversation changed to human') handovers`;
-      const [contactCount]=await sql`select count(*)::integer total from contacts where organization_id=${c.org} and (${search}='' or concat_ws(' ',name,phone,company) ilike ${pattern})`;
+      const [contactCount]=await sql`select count(*)::integer total from contacts where organization_id=${c.org} and removed_at is null and (${search}='' or concat_ws(' ',name,phone,company) ilike ${pattern})`;
       return {organization_id:c.org,user_id:c.user,role:c.role,contacts,conversations,
         ...(await pageMessages(null)),members,notes:notes.map(n=>({...n,conversation_id:n.logical_thread_id})),
         templates,quick_replies,products,campaigns,campaign_recipients,automation_rules,audit_logs,notifications,analytics,
