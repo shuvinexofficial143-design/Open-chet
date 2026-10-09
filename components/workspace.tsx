@@ -282,7 +282,7 @@ export default function Workspace() {
 
     const conversationId = selected;
     const routeId=state.current?.conversations.find(c=>c.id===selected)?.route_conversation_id;
-    if(attachment?.route_conversation_id&&attachment.route_conversation_id!==routeId){notify('Choose the attachment’s WhatsApp route or upload it again');return;}
+    if(attachment?.route_conversation_id&&attachment.route_conversation_id!==routeId){notify('This attachment belongs to an earlier connection. Upload it again before sending');return;}
     if(demo){const next=await act({type:'send',id:conversationId,values:{body:draft.trim()||attachment?.name||'',kind:attachment?.kind||'text',media_url:attachment?.media_url}},'Demo message sent');if(next){setDraft('');setAttachment(null);}return;}
     const outgoingBody = draft.trim() || attachment?.name || '';
     const outgoingKind = attachment?.kind || 'text';
