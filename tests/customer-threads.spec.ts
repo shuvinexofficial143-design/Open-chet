@@ -46,7 +46,7 @@ test('a closed 24-hour WhatsApp window offers a visible paid template, not a dis
   await cta.click();
 
   const templateDialog=page.getByRole('dialog');
-  await expect(templateDialog.getByText('WhatsApp only permits approved templates')).toBeVisible();
+  await expect(templateDialog.getByText('Outside the 24-hour window, WhatsApp allows only Meta-approved templates.',{exact:false})).toBeVisible();
   await templateDialog.getByRole('button',{name:/welcome_update/}).click();
   await expect(templateDialog.getByRole('button',{name:'Confirm & send approved template'})).toBeVisible();
   await expect(templateDialog.getByText('Meta messaging charges may apply')).toBeVisible();
