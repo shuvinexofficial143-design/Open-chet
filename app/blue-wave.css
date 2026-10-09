@@ -426,3 +426,64 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .mvp-app .paid-template-banner-copy small{font-size:10px}
   .mvp-app .paid-template-action{width:100%;padding:11px 12px;font-size:13px}
 }
+
+
+/* Mobile inbox: one compact top row (search + filter + new chat). Give the
+   conversation list the remaining vertical space and keep bottom tabs fixed. */
+.mvp-app .chat-search-toolbar{display:contents}
+.mvp-app .mobile-search-actions{display:none}
+.mvp-app .remove-contact-confirm{display:grid;gap:10px}
+.mvp-app .remove-contact-confirm p{margin:0;color:#607194;line-height:1.55}
+.mvp-app .remove-contact-confirm p:first-child{font-weight:700;color:#263c71;font-size:15px}
+.mvp-app .remove-contact-confirm .danger-button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:43px}
+.mvp-app .chat-menu button.danger{color:#c33d4f}
+@media(max-width:700px){
+  .mvp-app.chats-page .mvp-topbar{display:none}
+  .mvp-app.chats-page .mobile-chats-heading{display:none}
+  .mvp-app.chats-page .chat-view-tabs{display:none}
+  .mvp-app.chats-page .mvp-inbox .chat-list{
+    display:flex;flex-direction:column;min-height:0;overflow:hidden;
+  }
+  .mvp-app.chats-page .conversation-scroll{
+    flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  }
+  .mvp-app.chats-page .chat-search-toolbar{
+    display:flex;align-items:center;gap:8px;flex:0 0 auto;
+    padding:8px 11px;
+    min-height:60px;
+    background:#fff;
+    border-bottom:1px solid #e0e9fb;
+  }
+  .mvp-app.chats-page .chat-search-toolbar .chat-list-search{
+    flex:1 1 auto;min-width:0;height:44px;
+    margin:0;padding:8px 11px;
+    border-radius:12px;
+  }
+  .mvp-app.chats-page .chat-search-toolbar .chat-list-search input{
+    font-size:16px;min-width:0;
+  }
+  .mvp-app.chats-page .mobile-search-actions{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+  .mvp-app.chats-page .mobile-search-actions button{
+    width:43px;height:43px;border-radius:12px;
+    display:grid;place-items:center;position:relative;
+  }
+  .mvp-app.chats-page .mobile-filter-button{
+    color:#47699f;background:#f0f4ff;border:1px solid #dce7fc;
+  }
+  .mvp-app.chats-page .mobile-filter-button.active{
+    color:#fff;background:#1555f5;border-color:#1555f5;
+  }
+  .mvp-app.chats-page .mobile-unread-dot{
+    position:absolute;top:7px;right:7px;width:7px;height:7px;
+    border-radius:50%;background:#f59c3d;border:1px solid #fff;
+  }
+  .mvp-app.chats-page .mobile-new-chat{
+    color:#fff;background:#1555f5;box-shadow:0 4px 11px #1555f522;
+  }
+  .mvp-app.chats-page .mobile-nav{
+    height:61px;min-height:61px;
+    flex:0 0 auto;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .mvp-app.chats-page .mobile-nav button{min-height:54px}
+}
